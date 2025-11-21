@@ -537,6 +537,7 @@ html_v3 = r"""<!DOCTYPE html>
         }
 
         .state-bar-container {
+            width: 100%;
             height: 20px;
             background: #f0f0f0;
             border-radius: 4px;
@@ -570,8 +571,10 @@ html_v3 = r"""<!DOCTYPE html>
         }
 
         .state-indicator {
+            display: block;
             position: absolute;
             top: 0;
+            left: 50%;
             width: 4px;
             height: 100%;
             background: #4caf50;
@@ -1158,6 +1161,7 @@ html_v3 = r"""<!DOCTYPE html>
             forward(input) {
                 this.lastInput = [...input];
                 this.lastHidden = [];
+                this.lastPreActivation = [];
 
                 let current = input;
 
@@ -1165,15 +1169,18 @@ html_v3 = r"""<!DOCTYPE html>
                 for (let layerIdx = 0; layerIdx < this.layers.length; layerIdx++) {
                     const layer = this.layers[layerIdx];
                     const nextLayer = [];
+                    const preActivations = [];
 
                     for (let i = 0; i < layer.b.length; i++) {
                         let sum = layer.b[i];
                         for (let j = 0; j < current.length; j++) {
                             sum += current[j] * layer.w[j][i];
                         }
+                        preActivations[i] = sum;
                         nextLayer[i] = this.activate(sum);
                     }
 
+                    this.lastPreActivation.push([...preActivations]);
                     this.lastHidden.push([...nextLayer]);
                     current = nextLayer;
                 }
@@ -1412,11 +1419,12 @@ html_v3 = r"""<!DOCTYPE html>
                 for (let layerIdx = this.layers.length - 1; layerIdx >= 0; layerIdx--) {
                     const layer = this.layers[layerIdx];
                     const hidden = this.lastHidden[layerIdx];
+                    const preActivation = this.lastPreActivation[layerIdx];
                     const prevActivation = layerIdx > 0 ? this.lastHidden[layerIdx - 1] : this.lastInput;
 
-                    // Apply activation derivative
+                    // Apply activation derivative (using pre-activation values)
                     for (let i = 0; i < currentGrad.length; i++) {
-                        currentGrad[i] *= this.activate(hidden[i], true);
+                        currentGrad[i] *= this.activate(preActivation[i], true);
                     }
 
                     // Accumulate weight and bias gradients
