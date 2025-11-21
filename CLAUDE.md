@@ -4,18 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WebNeuralNet is a single-file CartPole V3 reinforcement learning visualization. The project generates an interactive HTML/JavaScript application for training a neural network agent to balance a pole using policy gradient methods (actor-critic style training).
+WebNeuralNet is a single-file CartPole reinforcement learning visualization. The project generates an interactive HTML/JavaScript application for training a neural network agent to balance a pole using advanced Actor-Critic methods with Generalized Advantage Estimation (GAE) and Adam optimizer.
 
 ## Architecture
 
 The project consists of a Python script that embeds a complete HTML5 application as a string literal:
 
-- **File Structure**: Single entry point in `from pathlib import Path.html`
-- **Output**: Generates `cartpole-v3-mobile-optimized.html` file
+- **File Structure**: Single entry point in `generate.py`
+- **Output**: Generates `cartpole.html` file
 - **Technology Stack**:
   - **Frontend**: Pure HTML5 Canvas + SVG, vanilla JavaScript (no frameworks)
-  - **RL Algorithm**: Policy gradient with baseline (advantage actor-critic variant)
-  - **Network Architecture**: 2-layer feed-forward neural network (4 → hidden → 2)
+  - **RL Algorithm**: Actor-Critic with GAE (Generalized Advantage Estimation, λ=0.95)
+  - **Optimizer**: Adam optimizer with adaptive learning rates and momentum
+  - **Network Architecture**: Multi-layer configurable (4 → [hidden layers] → 2 Actor + 1 Critic)
+  - **Activation Functions**: ReLU, Tanh, ELU, Swish (user-selectable)
   - **Environment**: CartPole physics simulation in JavaScript
 
 ## Key Components
@@ -26,41 +28,58 @@ The project consists of a Python script that embeds a complete HTML5 application
 
 ### JavaScript Sections (within HTML)
 
-1. **Math Module (`M`)**: Low-level matrix operations optimized for speed
-   - Matrix creation and initialization
-   - Vector-matrix multiplication
-   - Activation functions (ReLU, softmax)
-   - Gradient clipping
+1. **Adam Optimizer Class**: Adaptive moment estimation optimizer
+   - Momentum and adaptive learning rates (β1=0.9, β2=0.999)
+   - Bias correction for first and second moment estimates
+   - Supports both 1D vectors and 2D matrices
 
-2. **Agent Class**: Neural network policy
-   - Forward pass: state → probabilities (softmax output)
-   - Training: policy gradient with entropy regularization
-   - Parameters: W1, b1 (hidden layer), W2, b2 (output layer)
+2. **ActorCriticNetwork Class**: Dual-head neural network
+   - **Actor Head**: Policy network (softmax output for action probabilities)
+   - **Critic Head**: Value function network (predicts state value)
+   - Multi-layer architecture with configurable hidden layers
+   - Multiple activation functions (ReLU, Tanh, ELU, Swish)
+   - GAE advantage estimation with λ parameter
+   - Gradient clipping by global norm (prevents divergence)
 
 3. **CartPole Class**: Environment physics
    - State: [x, x_dot, theta, theta_dot]
    - Action: 0 (left) or 1 (right) force
    - Reward: 1 per step until failure or max steps reached
+   - Customizable physics parameters (gravity, pole length, friction, force magnitude)
 
-4. **Visualization (`Vis`)**: Real-time network visualization
-   - SVG network graph with weight colors (cyan=positive, magenta=negative)
-   - Node activation visualization
-   - Layer-wise activations (input, hidden, output)
+4. **Renderer Class**: Canvas-based visualization
+   - Real-time CartPole rendering with physics visualization
+   - Color-coded pole angle (green→orange→red based on criticality)
+   - Velocity vectors and warning indicators
 
-5. **App Logic**: Training loop and UI interaction
-   - `loop()`: Main animation frame handler
-   - Episode management and metrics tracking
-   - Canvas-based CartPole environment rendering
+5. **NetworkVisualizer Class**: Real-time network visualization
+   - SVG network graph with dynamic layer support
+   - Weight visualization (green=positive, red=negative)
+   - Separate coloring for Actor (green), Critic (blue), and hidden layers
+   - Node activation opacity based on values
+
+6. **TrainingChart Class**: Episode performance tracking
+   - Moving average calculation (10-episode window)
+   - Grid-based rendering with Y-axis labels
+   - Handles arbitrary number of episodes
+
+7. **RLSandbox Class**: Main application logic
+   - Training loop with configurable exploration (ε-greedy)
+   - Testing and manual control modes
+   - Real-time metric tracking and visualization
+   - Learning rate and hyperparameter adjustment during training
 
 ### Configuration
 
-Tunable hyperparameters (accessible via UI sliders):
-- Learning Rate (0.001 - 0.05, default 0.01)
-- Gamma/Discount Factor (0.90 - 0.999, default 0.99)
-- Entropy Bonus (0.0 - 0.02, default 0.005)
-- Steps Per Frame (1-60, default 15)
-- Max Episode Steps (200-5000, default 1000)
-- Hidden Layer Size (8, 16, 24, 32, 48, 64)
+Tunable hyperparameters (accessible via UI controls):
+- **Learning Rate**: 0.0001 - 0.01, default 0.003 (applies to all Adam optimizers)
+- **Discount Factor (γ)**: 0.90 - 1.0, default 0.99
+- **Entropy Coefficient**: 0.0 - 0.1, default 0.02 (encourages exploration)
+- **Hidden Layer Size**: 16 - 256, default 32
+- **Network Depth**: 1-3 hidden layers (configurable architecture)
+- **Activation Function**: ReLU (default), Tanh, ELU, or Swish
+- **Training Speed**: 1x - 10x (multiplier for episodes per second)
+- **GAE Lambda**: Fixed at λ=0.95 (controls variance-bias tradeoff)
 
 ## Common Development Tasks
 
@@ -85,20 +104,36 @@ Edit the `CFG` object in the JavaScript section:
 ### Run/Generate the Application
 
 ```bash
-python "from pathlib import Path.html"
+python3 generate.py
 ```
 
-This creates `cartpole-v3-mobile-optimized.html` in the current directory.
+This creates `cartpole.html` in the current directory. Then open `cartpole.html` in a web browser.
 
 ### Algorithm Details
 
-The training uses a policy gradient approach with:
-- State: Normalized CartPole observations
-- Action sampling: Categorical distribution from softmax output
-- Returns: Discounted sum of rewards (G) computed backward
-- Baseline: Exponential moving average of returns for advantage estimation
-- Entropy bonus: Augments return to encourage exploration
-- Gradient clipping: Prevents large weight updates
+The training uses an Actor-Critic approach with Generalized Advantage Estimation:
+
+**Forward Pass:**
+- State input: [x, x_dot, theta, theta_dot]
+- Actor head: Outputs softmax probabilities for 2 actions
+- Critic head: Outputs scalar value estimate V(s)
+
+**Advantage Estimation (GAE):**
+- TD residuals: δ_t = r_t + γV(s_{t+1}) - V(s_t)
+- GAE advantages: A_t = δ_t + (γλ)δ_{t+1} + (γλ)²δ_{t+2} + ...
+- λ = 0.95 controls bias-variance tradeoff
+- Advantages are normalized (zero-mean, unit-variance)
+
+**Loss Functions:**
+- Actor loss: -log(π(a|s)) × A(s,a) - H(π(s)) × entropy_coef
+- Critic loss: MSE(V(s), R_t) where R_t = A_t + V(s)
+- H(π) = -Σ π(a) log(π(a)) encourages exploration
+
+**Optimization:**
+- Adam optimizer with β1=0.9, β2=0.999, ε=1e-8
+- Per-parameter adaptive learning rates
+- Gradient clipping by global norm (prevents divergence)
+- Supports dynamic learning rate adjustment during training
 
 ## Mobile Optimization Notes
 
@@ -111,8 +146,22 @@ The UI is optimized for mobile with:
 
 ## Performance Considerations
 
-- **No garbage collection during forward pass**: Pre-allocated buffers used throughout
-- **Float32Array**: All numerical computations use typed arrays for speed
-- **SVG caching**: Network visualization cached after initialization
-- **Canvas optimization**: Only redraws on actual state changes
-- **Steps per frame**: Configurable to balance accuracy and responsiveness
+- **Gradient Accumulation**: Gradients accumulated across trajectory before update (no GC pressure)
+- **Pre-allocated Buffers**: All matrices/vectors created once in constructor
+- **Adam State**: First and second moment estimates maintained separately for stability
+- **Batch Processing**: Episode trajectory processed in single update call
+- **Learning Rate Decay**: Exploration epsilon decays from 0.2 → 0.05 across training
+- **Responsive UI**: Network visualization and metrics update at 60 FPS
+- **Configurable Speed**: Training speed (1-10x) adjusts episode execution speed
+
+## Features
+
+- **Multi-layer Networks**: 1-3 configurable hidden layers with sizes from 16-256 neurons
+- **Multiple Activations**: Choose between ReLU, Tanh, ELU, or Swish per network
+- **Manual Control Mode**: Test the CartPole manually with arrow keys or A/D
+- **Real-time Metrics**:
+  - Gradient norm and advantage tracking
+  - Policy entropy monitoring
+  - Value function estimates
+  - Input importance visualization
+- **Training Diagnostics**: Visible gradient norms, advantage statistics, and exploration rate
