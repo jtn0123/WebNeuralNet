@@ -903,6 +903,53 @@
                 <h2>Training Progress</h2>
                 <canvas id="training-chart"></canvas>
             </div>
+
+            <div class="panel full-width">
+                <h2>Training Loss Over Time</h2>
+                <canvas id="training-loss-chart" style="height: 200px;"></canvas>
+            </div>
+
+            <div class="panel full-width">
+                <h2>Advanced Training Metrics</h2>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">Gradient Norm</div>
+                        <div class="metric-value" id="metric-grad-norm">0.000</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Avg Advantage</div>
+                        <div class="metric-value" id="metric-advantage">0.000</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Avg Return</div>
+                        <div class="metric-value" id="metric-return">0.0</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Avg Q-Value</div>
+                        <div class="metric-value" id="metric-qvalue">0.00</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Policy Entropy</div>
+                        <div class="metric-value" id="metric-entropy">0.000</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Left Action %</div>
+                        <div class="metric-value" id="metric-left-action">50%</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Right Action %</div>
+                        <div class="metric-value" id="metric-right-action">50%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel full-width">
+                <h2>State Space Value Function Heatmap</h2>
+                <canvas id="state-space-heatmap" style="height: 250px;"></canvas>
+                <p style="font-size: 11px; color: #666; margin-top: 8px; text-align: center;">
+                    Blue = Low Value | Green/Yellow = Medium | Red = High Value | Updates every 25 episodes
+                </p>
+            </div>
         </div>
 
         <div class="panel">
@@ -1310,6 +1357,8 @@
                 const returns = [];
                 const values = [];
                 const advantages = [];
+                let totalActorLoss = 0;
+                let totalCriticLoss = 0;
 
                 // Forward pass to get all values
                 for (let i = 0; i < trajectory.length; i++) {
@@ -1364,14 +1413,22 @@
                     // Forward pass
                     const { policy, value } = this.forward(state);
 
-                    // Actor loss gradients (policy gradient with advantage)
-                    const actorOutputGrad = [...policy];
-                    
-                    // Calculate current entropy
+                    // Actor loss: -log(π(a|s)) * A(s,a) - H(π(s)) * entropy_coef
+                    const actionProb = policy[action];
+                    const logProb = Math.log(actionProb + 1e-10);
                     let entropy = 0;
                     for (const p of policy) {
                         if (p > 0) entropy -= p * Math.log(p);
                     }
+                    const actorLoss = -logProb * advantage - entropyCoef * entropy;
+                    totalActorLoss += actorLoss;
+
+                    // Critic loss: MSE between value and return
+                    const criticLoss = valueCoef * (value - returnValue) ** 2;
+                    totalCriticLoss += criticLoss;
+
+                    // Actor loss gradients (policy gradient with advantage)
+                    const actorOutputGrad = [...policy];
 
                     actorOutputGrad[action] -= 1;
                     for (let i = 0; i < this.outputSize; i++) {
@@ -1419,7 +1476,9 @@
                 return {
                     avgAdvantage: advantages.reduce((a, b) => a + b, 0) / advantages.length,
                     avgReturn: returns.reduce((a, b) => a + b, 0) / returns.length,
-                    gradNorm: totalNorm
+                    gradNorm: totalNorm,
+                    actorLoss: totalActorLoss / batchSize,
+                    criticLoss: totalCriticLoss / batchSize
                 };
             }
 
@@ -2086,6 +2145,315 @@
             }
         }
 
+        // Loss tracking visualization
+        class TrainingLossChart {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.actorLosses = [];
+                this.criticLosses = [];
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+            }
+
+            resize() {
+                const rect = this.canvas.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+
+            addDataPoint(actorLoss, criticLoss) {
+                this.actorLosses.push(actorLoss);
+                this.criticLosses.push(criticLoss);
+                // Keep only last 200 episodes to avoid memory bloat
+                if (this.actorLosses.length > 200) {
+                    this.actorLosses.shift();
+                    this.criticLosses.shift();
+                }
+                this.draw();
+            }
+
+            draw() {
+                const ctx = this.ctx;
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+                const padding = 40;
+
+                // Clear
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, width, height);
+
+                if (this.actorLosses.length === 0) return;
+
+                // Get max values
+                const maxActorLoss = Math.max(...this.actorLosses, 0.1);
+                const maxCriticLoss = Math.max(...this.criticLosses, 0.1);
+                const maxLoss = Math.max(maxActorLoss, maxCriticLoss);
+
+                // Draw axes
+                ctx.strokeStyle = '#999';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(padding, height - padding);
+                ctx.lineTo(width - padding, height - padding);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(padding, padding);
+                ctx.lineTo(padding, height - padding);
+                ctx.stroke();
+
+                // Draw actor loss line
+                ctx.strokeStyle = '#667eea';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < this.actorLosses.length; i++) {
+                    const x = padding + (i / (this.actorLosses.length - 1 || 1)) * (width - 2 * padding);
+                    const y = height - padding - (this.actorLosses[i] / maxLoss) * (height - 2 * padding);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+
+                // Draw critic loss line
+                ctx.strokeStyle = '#ff9800';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < this.criticLosses.length; i++) {
+                    const x = padding + (i / (this.criticLosses.length - 1 || 1)) * (width - 2 * padding);
+                    const y = height - padding - (this.criticLosses[i] / maxLoss) * (height - 2 * padding);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+
+                // Labels
+                ctx.fillStyle = '#333';
+                ctx.font = '12px sans-serif';
+                ctx.fillText('0', padding - 20, height - padding + 5);
+                ctx.fillText(maxLoss.toFixed(2), padding - 35, padding + 5);
+
+                // Legend
+                ctx.fillStyle = '#667eea';
+                ctx.fillRect(width - 180, 10, 12, 12);
+                ctx.fillStyle = '#333';
+                ctx.fillText('Actor Loss', width - 160, 20);
+
+                ctx.fillStyle = '#ff9800';
+                ctx.fillRect(width - 180, 30, 12, 12);
+                ctx.fillStyle = '#333';
+                ctx.fillText('Critic Loss', width - 160, 40);
+            }
+
+            clear() {
+                this.actorLosses = [];
+                this.criticLosses = [];
+                this.draw();
+            }
+        }
+
+        // Metrics dashboard
+        class MetricsDashboard {
+            constructor() {
+                this.metrics = {
+                    gradNorm: 0,
+                    avgAdvantage: 0,
+                    avgReturn: 0,
+                    avgQValue: 0,
+                    entropy: 0,
+                    leftAction: 0,
+                    rightAction: 0
+                };
+            }
+
+            update(metrics) {
+                Object.assign(this.metrics, metrics);
+            }
+
+            render() {
+                // Update UI elements
+                if (document.getElementById('metric-grad-norm')) {
+                    document.getElementById('metric-grad-norm').textContent = this.metrics.gradNorm.toFixed(3);
+                }
+                if (document.getElementById('metric-advantage')) {
+                    document.getElementById('metric-advantage').textContent = this.metrics.avgAdvantage.toFixed(3);
+                }
+                if (document.getElementById('metric-return')) {
+                    document.getElementById('metric-return').textContent = this.metrics.avgReturn.toFixed(1);
+                }
+                if (document.getElementById('metric-qvalue')) {
+                    document.getElementById('metric-qvalue').textContent = this.metrics.avgQValue.toFixed(2);
+                }
+                if (document.getElementById('metric-entropy')) {
+                    document.getElementById('metric-entropy').textContent = this.metrics.entropy.toFixed(3);
+                }
+                if (document.getElementById('metric-left-action')) {
+                    document.getElementById('metric-left-action').textContent = (this.metrics.leftAction * 100).toFixed(0) + '%';
+                }
+                if (document.getElementById('metric-right-action')) {
+                    document.getElementById('metric-right-action').textContent = (this.metrics.rightAction * 100).toFixed(0) + '%';
+                }
+            }
+        }
+
+        // Replay buffer for experience replay
+        class ReplayBuffer {
+            constructor(maxSize = 10000) {
+                this.maxSize = maxSize;
+                this.buffer = [];
+                this.priorities = [];
+            }
+
+            add(transition, tdError = 1.0) {
+                this.buffer.push(transition);
+                this.priorities.push(Math.abs(tdError) + 0.01); // Add small epsilon to prevent zero priority
+
+                if (this.buffer.length > this.maxSize) {
+                    this.buffer.shift();
+                    this.priorities.shift();
+                }
+            }
+
+            sampleBatch(batchSize) {
+                if (this.buffer.length === 0) return [];
+
+                const batch = [];
+                const totalPriority = this.priorities.reduce((a, b) => a + b, 0);
+
+                for (let i = 0; i < Math.min(batchSize, this.buffer.length); i++) {
+                    let rand = Math.random() * totalPriority;
+                    for (let j = 0; j < this.buffer.length; j++) {
+                        rand -= this.priorities[j];
+                        if (rand <= 0) {
+                            batch.push(this.buffer[j]);
+                            break;
+                        }
+                    }
+                }
+
+                return batch;
+            }
+
+            updatePriorities(transitions, tdErrors) {
+                // Update priorities based on new TD errors
+                for (let i = 0; i < Math.min(transitions.length, this.buffer.length); i++) {
+                    this.priorities[this.buffer.length - 1 - i] = Math.abs(tdErrors[i]) + 0.01;
+                }
+            }
+
+            clear() {
+                this.buffer = [];
+                this.priorities = [];
+            }
+
+            size() {
+                return this.buffer.length;
+            }
+        }
+
+        // State space heatmap visualization
+        class StateSpaceHeatmap {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.heatmapData = null;
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+            }
+
+            resize() {
+                const rect = this.canvas.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+
+            computeHeatmap(network, env) {
+                const gridSize = 30;
+                this.heatmapData = [];
+
+                // Sample grid of states
+                const xMin = -env.xThreshold, xMax = env.xThreshold;
+                const thetaMin = -env.thetaThreshold, thetaMax = env.thetaThreshold;
+
+                for (let i = 0; i < gridSize; i++) {
+                    this.heatmapData[i] = [];
+                    for (let j = 0; j < gridSize; j++) {
+                        const x = xMin + (xMax - xMin) * (i / gridSize);
+                        const theta = thetaMin + (thetaMax - thetaMin) * (j / gridSize);
+                        const state = [x, 0, theta, 0]; // Zero velocity for clean visualization
+
+                        // Normalize and get value estimate
+                        const normState = [
+                            state[0] / CONSTANTS.MAX_X,
+                            state[1] / CONSTANTS.MAX_X_DOT,
+                            state[2] / CONSTANTS.MAX_THETA,
+                            state[3] / CONSTANTS.MAX_THETA_DOT
+                        ];
+
+                        const { value } = network.forward(normState);
+                        this.heatmapData[i][j] = Math.max(0, Math.min(1, (value + 50) / 100)); // Normalize to [0,1]
+                    }
+                }
+                this.draw();
+            }
+
+            draw() {
+                if (!this.heatmapData) {
+                    const ctx = this.ctx;
+                    ctx.fillStyle = '#ccc';
+                    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                    ctx.fillStyle = '#999';
+                    ctx.font = '14px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Train network to see state space values', this.canvas.width / 2, this.canvas.height / 2);
+                    return;
+                }
+
+                const ctx = this.ctx;
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+                const gridSize = this.heatmapData.length;
+
+                const cellWidth = width / gridSize;
+                const cellHeight = height / gridSize;
+
+                for (let i = 0; i < gridSize; i++) {
+                    for (let j = 0; j < gridSize; j++) {
+                        const value = this.heatmapData[i][j];
+                        // Color gradient: blue (low) -> green -> red (high)
+                        let color;
+                        if (value < 0.5) {
+                            const r = Math.floor(value * 2 * 255);
+                            color = `rgb(0, ${r}, 255)`;
+                        } else {
+                            const b = Math.floor((1 - value) * 2 * 255);
+                            const g = 255;
+                            const r = 255;
+                            color = `rgb(${r}, ${g}, ${b})`;
+                        }
+
+                        ctx.fillStyle = color;
+                        ctx.fillRect(i * cellWidth, j * cellHeight, cellWidth, cellHeight);
+                    }
+                }
+
+                // Labels
+                ctx.fillStyle = '#333';
+                ctx.font = '11px sans-serif';
+                ctx.fillText('Position', width / 2, height + 15);
+                ctx.save();
+                ctx.translate(-15, height / 2);
+                ctx.rotate(-Math.PI / 2);
+                ctx.textAlign = 'center';
+                ctx.fillText('Angle', 0, 0);
+                ctx.restore();
+            }
+
+            clear() {
+                this.heatmapData = null;
+                this.draw();
+            }
+        }
+
         // Main application
         class RLSandbox {
             constructor() {
@@ -2094,6 +2462,13 @@
                 this.renderer = new Renderer('cartpole-canvas');
                 this.visualizer = new NetworkVisualizer('network-svg');
                 this.chart = new TrainingChart('training-chart');
+
+                // Advanced features
+                this.lossChart = new TrainingLossChart('training-loss-chart');
+                this.metricsDashboard = new MetricsDashboard();
+                this.replayBuffer = new ReplayBuffer();
+                this.heatmap = new StateSpaceHeatmap('state-space-heatmap');
+                this.useReplayBuffer = false;
 
                 this.isTraining = false;
                 this.isTesting = false;
@@ -2113,6 +2488,8 @@
                 this.lastGradNorm = 0;
                 this.lastAvgAdvantage = 0;
                 this.lastAvgReturn = 0;
+                this.lastActorLoss = 0;
+                this.lastCriticLoss = 0;
 
                 this.initNetwork();
                 this.setupControls();
@@ -2394,6 +2771,28 @@
                     this.lastGradNorm = updateMetrics.gradNorm;
                     this.lastAvgAdvantage = updateMetrics.avgAdvantage;
                     this.lastAvgReturn = updateMetrics.avgReturn;
+                    this.lastActorLoss = updateMetrics.actorLoss;
+                    this.lastCriticLoss = updateMetrics.criticLoss;
+
+                    // Update loss chart
+                    this.lossChart.addDataPoint(updateMetrics.actorLoss, updateMetrics.criticLoss);
+
+                    // Update metrics dashboard
+                    this.metricsDashboard.update({
+                        gradNorm: updateMetrics.gradNorm,
+                        avgAdvantage: updateMetrics.avgAdvantage,
+                        avgReturn: updateMetrics.avgReturn
+                    });
+                    this.metricsDashboard.render();
+
+                    // Update heatmap every 25 episodes
+                    if (this.episode % 25 === 0) {
+                        try {
+                            this.heatmap.computeHeatmap(this.network, this.env);
+                        } catch (e) {
+                            // Silently fail if heatmap canvas not available
+                        }
+                    }
 
                     // Slower exploration decay
                     this.exploration = Math.max(this.minExploration, this.exploration * this.explorationDecay);
@@ -2454,6 +2853,9 @@
                 this.survivalHistory = [];
                 this.exploration = CONSTANTS.INITIAL_EXPLORATION; // Reset exploration
                 this.chart.clear();
+                this.lossChart.clear();
+                this.heatmap.clear();
+                this.replayBuffer.clear();
                 this.initNetwork();
                 this.env.reset();
                 this.updateMetrics();
