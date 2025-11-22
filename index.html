@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CartPole Actor-Critic RL Sandbox</title>
+    <link rel="stylesheet" href="/src/styles/base.css">
+    <link rel="stylesheet" href="/src/styles/components.css">
+    <link rel="stylesheet" href="/src/styles/animations.css">
+</head>
+<body>
+    <div class="container">
+        <h1>CartPole Actor-Critic RL Sandbox</h1>
+
+        <div class="main-grid">
+            <div class="panel">
+                <h2>CartPole Environment <span class="mode-indicator" id="mode-indicator">IDLE</span></h2>
+                <canvas id="cartpole-canvas"></canvas>
+                <div class="action-bars">
+                    <div class="action-bar">
+                        <div class="action-bar-label">LEFT</div>
+                        <div class="action-bar-fill" id="action-left"></div>
+                        <div class="action-bar-value" id="action-left-val">0%</div>
+                    </div>
+                    <div class="action-bar">
+                        <div class="action-bar-label">RIGHT</div>
+                        <div class="action-bar-fill" id="action-right"></div>
+                        <div class="action-bar-value" id="action-right-val">0%</div>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button class="primary" id="train-btn">Start Training</button>
+                    <button class="secondary" id="pause-btn" style="display: none;">Pause</button>
+                    <button class="success" id="test-btn">Test Policy</button>
+                    <button class="danger" id="reset-btn">Reset Policy</button>
+                    <button class="secondary" id="manual-btn">Manual Control</button>
+                </div>
+                <div id="keyboard-hint" class="keyboard-hint" style="display: none;">
+                    Use LEFT/RIGHT arrow keys or A/D to control the cart
+                </div>
+
+                <!-- Network Management Panel -->
+                <div class="feature-panel">
+                    <h3>Network Management</h3>
+                    <div class="feature-buttons">
+                        <button class="feature-btn" id="save-network-btn">💾 Save</button>
+                        <button class="feature-btn" id="load-network-btn">📂 Load</button>
+                        <button class="feature-btn" id="export-data-btn">📊 Export CSV</button>
+                    </div>
+                </div>
+
+                <!-- Quick Presets Panel -->
+                <div class="feature-panel">
+                    <h3>Training Presets</h3>
+                    <div class="feature-buttons">
+                        <button class="feature-btn preset-btn" id="preset-quick">⚡ Quick</button>
+                        <button class="feature-btn preset-btn" id="preset-deep">🧠 Deep</button>
+                        <button class="feature-btn preset-btn" id="preset-exploration">🔍 Explore</button>
+                        <button class="feature-btn preset-btn" id="preset-production">🏭 Prod</button>
+                    </div>
+                </div>
+
+                <!-- Keyboard Shortcuts Legend -->
+                <div class="feature-panel">
+                    <h3>Keyboard Shortcuts</h3>
+                    <div class="shortcuts-legend">
+                        <div class="shortcut-row"><kbd>SPACE</kbd> <span>Train/Pause</span></div>
+                        <div class="shortcut-row"><kbd>T</kbd> <span>Test Policy</span></div>
+                        <div class="shortcut-row"><kbd>R</kbd> <span>Reset</span></div>
+                        <div class="shortcut-row"><kbd>S</kbd> <span>Save Network</span></div>
+                        <div class="shortcut-row"><kbd>L</kbd> <span>Load Network</span></div>
+                        <div class="shortcut-row"><kbd>M</kbd> <span>Manual Control</span></div>
+                        <div class="shortcut-row"><kbd>P</kbd> <span>Pause Training</span></div>
+                    </div>
+                </div>
+
+                <div class="network-perception">
+                    <div class="perception-title">Network Input (What the AI "Sees")</div>
+                    <div class="perception-grid">
+                        <div class="perception-input" id="perception-x">
+                            <div class="perception-input-label">Cart Position</div>
+                            <div class="perception-input-value" id="perception-x-val">0.00</div>
+                            <div class="perception-input-bar">
+                                <div class="perception-input-bar-fill" id="perception-x-bar"></div>
+                            </div>
+                        </div>
+                        <div class="perception-input" id="perception-xdot">
+                            <div class="perception-input-label">Cart Velocity</div>
+                            <div class="perception-input-value" id="perception-xdot-val">0.00</div>
+                            <div class="perception-input-bar">
+                                <div class="perception-input-bar-fill" id="perception-xdot-bar"></div>
+                            </div>
+                        </div>
+                        <div class="perception-input" id="perception-theta">
+                            <div class="perception-input-label">Pole Angle</div>
+                            <div class="perception-input-value" id="perception-theta-val">0.00</div>
+                            <div class="perception-input-bar">
+                                <div class="perception-input-bar-fill" id="perception-theta-bar"></div>
+                            </div>
+                        </div>
+                        <div class="perception-input" id="perception-thetadot">
+                            <div class="perception-input-label">Angular Vel</div>
+                            <div class="perception-input-value" id="perception-thetadot-val">0.00</div>
+                            <div class="perception-input-bar">
+                                <div class="perception-input-bar-fill" id="perception-thetadot-bar"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="network-perception">
+                    <div class="perception-title">Input Importance (Gradient Highlights)</div>
+                    <div class="perception-grid">
+                        <div class="perception-input">
+                            <div class="perception-input-label">Position</div>
+                            <div class="perception-input-bar">
+                                <div class="perception-input-bar-fill" id="importance-x-bar" style="background: #ff9800;"></div>
+                            </div>
+                            <div class="perception-input-value" id="importance-x-val">0%</div>
+                        </div>
+                        <div class="perception-input">
+                            <div class="perception-input-label">Velocity</div>
+                            <div class="perception-input-bar">
+                                <div class="perception-input-bar-fill" id="importance-xdot-bar" style="background: #ff9800;"></div>
+                            </div>
+                            <div class="perception-input-value" id="importance-xdot-val">0%</div>
+                        </div>
+                        <div class="perception-input">
+                            <div class="perception-input-label">Angle</div>
+                            <div class="perception-input-bar">
+                                <div class="perception-input-bar-fill" id="importance-theta-bar" style="background: #ff5722;"></div>
+                            </div>
+                            <div class="perception-input-value" id="importance-theta-val">0%</div>
+                        </div>
+                        <div class="perception-input">
+                            <div class="perception-input-label">Ang Vel</div>
+                            <div class="perception-input-bar">
+                                <div class="perception-input-bar-fill" id="importance-thetadot-bar" style="background: #ff5722;"></div>
+                            </div>
+                            <div class="perception-input-value" id="importance-thetadot-val">0%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="state-bars">
+                    <div class="state-bar-container">
+                        <div class="state-bar-label">
+                            <span>Pole Angle (θ)</span>
+                            <span class="state-bar-value" id="theta-value">0.0</span>
+                        </div>
+                        <div class="state-bar-track">
+                            <div class="state-bar-center"></div>
+                            <div class="state-bar-fill" id="theta-bar"></div>
+                        </div>
+                    </div>
+                    <div class="state-bar-container">
+                        <div class="state-bar-label">
+                            <span>Angular Velocity</span>
+                            <span class="state-bar-value" id="thetadot-value">0.00</span>
+                        </div>
+                        <div class="state-bar-track">
+                            <div class="state-bar-center"></div>
+                            <div class="state-bar-fill" id="thetadot-bar"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Neural Network Visualizer</h2>
+                <svg id="network-svg"></svg>
+                <div class="training-stats">
+                    <div class="training-stat">
+                        <div>Avg Weight (Layers)</div>
+                        <div class="training-stat-value" id="avg-w1">0.00</div>
+                    </div>
+                    <div class="training-stat">
+                        <div>Avg Weight (Actor)</div>
+                        <div class="training-stat-value" id="avg-w2">0.00</div>
+                    </div>
+                    <div class="training-stat">
+                        <div>Policy Entropy</div>
+                        <div class="training-stat-value" id="entropy">0.00</div>
+                    </div>
+                    <div class="training-stat">
+                        <div>Exploration (ε)</div>
+                        <div class="training-stat-value" id="exploration-rate">0.20</div>
+                    </div>
+                    <div class="training-stat">
+                        <div>Gradient Norm</div>
+                        <div class="training-stat-value" id="grad-norm">0.00</div>
+                    </div>
+                    <div class="training-stat">
+                        <div>Avg Advantage</div>
+                        <div class="training-stat-value" id="avg-advantage">0.00</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel full-width">
+                <h2>What the Network Sees (State Observations)</h2>
+                <div class="state-display">
+                    <div class="state-item" id="state-x">
+                        <div class="state-label">
+                            <span class="state-icon">↔️</span>
+                            <span>Cart Position (x)</span>
+                        </div>
+                        <div class="state-bar-container">
+                            <div class="state-center-line"></div>
+                            <div class="state-indicator" id="indicator-x"></div>
+                        </div>
+                        <div class="state-value" id="value-x">0.00</div>
+                    </div>
+
+                    <div class="state-item" id="state-xdot">
+                        <div class="state-label">
+                            <span class="state-icon">💨</span>
+                            <span>Cart Velocity (ẋ)</span>
+                        </div>
+                        <div class="state-bar-container">
+                            <div class="state-center-line"></div>
+                            <div class="state-indicator" id="indicator-xdot"></div>
+                        </div>
+                        <div class="state-value" id="value-xdot">0.00</div>
+                    </div>
+
+                    <div class="state-item" id="state-theta">
+                        <div class="state-label">
+                            <span class="state-icon">📐</span>
+                            <span>Pole Angle (θ)</span>
+                        </div>
+                        <div class="state-bar-container">
+                            <div class="state-center-line"></div>
+                            <div class="state-indicator" id="indicator-theta"></div>
+                        </div>
+                        <div class="state-value" id="value-theta">0.0</div>
+                    </div>
+
+                    <div class="state-item" id="state-thetadot">
+                        <div class="state-label">
+                            <span class="state-icon">🔄</span>
+                            <span>Pole Angular Velocity (θ̇)</span>
+                        </div>
+                        <div class="state-bar-container">
+                            <div class="state-center-line"></div>
+                            <div class="state-indicator" id="indicator-thetadot"></div>
+                        </div>
+                        <div class="state-value" id="value-thetadot">0.00</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel full-width">
+                <h2>Training Progress</h2>
+                <canvas id="training-chart"></canvas>
+            </div>
+
+            <div class="panel full-width">
+                <h2>Training Loss Over Time</h2>
+                <canvas id="training-loss-chart" style="height: 200px;"></canvas>
+            </div>
+
+            <div class="panel full-width">
+                <h2>Advanced Training Metrics</h2>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">Gradient Norm</div>
+                        <div class="metric-value" id="metric-grad-norm">0.000</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Avg Advantage</div>
+                        <div class="metric-value" id="metric-advantage">0.000</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Avg Return</div>
+                        <div class="metric-value" id="metric-return">0.0</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Avg Q-Value</div>
+                        <div class="metric-value" id="metric-qvalue">0.00</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Policy Entropy</div>
+                        <div class="metric-value" id="metric-entropy">0.000</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Left Action %</div>
+                        <div class="metric-value" id="metric-left-action">50%</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Right Action %</div>
+                        <div class="metric-value" id="metric-right-action">50%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel full-width">
+                <h2>State Space Value Function Heatmap</h2>
+                <canvas id="state-space-heatmap" style="height: 250px;"></canvas>
+                <p style="font-size: 11px; color: #666; margin-top: 8px; text-align: center;">
+                    Blue = Low Value | Green/Yellow = Medium | Red = High Value | Updates every 25 episodes
+                </p>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Metrics</h2>
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-label">Episode</div>
+                    <div class="metric-value" id="episode-count">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Steps This Episode</div>
+                    <div class="metric-value" id="steps-count">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Reward This Episode</div>
+                    <div class="metric-value" id="reward-count">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Last Survival</div>
+                    <div class="metric-value" id="last-survival">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Best Survival</div>
+                    <div class="metric-value" id="best-survival">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Avg Last 10</div>
+                    <div class="metric-value" id="avg-survival">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Value Estimate</div>
+                    <div class="metric-value" id="value-estimate">0.0</div>
+                </div>
+            </div>
+
+            <div class="settings">
+                <div class="setting">
+                    <label>Learning Rate</label>
+                    <input type="number" id="learning-rate" value="0.003" step="0.0001" min="0.0001" max="0.01">
+                </div>
+                <div class="setting">
+                    <label>Discount Factor (γ)</label>
+                    <input type="number" id="discount" value="0.99" step="0.01" min="0.9" max="1.0">
+                </div>
+                <div class="setting">
+                    <label>Hidden Layer Size</label>
+                    <input type="number" id="hidden-size" value="32" step="8" min="16" max="256">
+                </div>
+                <div class="setting">
+                    <label>Network Depth</label>
+                    <select id="network-depth">
+                        <option value="1">1 Layer</option>
+                        <option value="2" selected>2 Layers</option>
+                        <option value="3">3 Layers</option>
+                    </select>
+                </div>
+                <div class="setting">
+                    <label>Activation Function</label>
+                    <select id="activation">
+                        <option value="relu" selected>ReLU</option>
+                        <option value="tanh">Tanh</option>
+                        <option value="elu">ELU</option>
+                        <option value="swish">Swish</option>
+                    </select>
+                </div>
+                <div class="setting">
+                    <label>Entropy Coefficient</label>
+                    <input type="number" id="entropy-coef" value="0.02" step="0.001" min="0" max="0.1">
+                </div>
+            </div>
+
+            <div class="slider-control" style="margin-top: 16px;">
+                <label>Training Speed:</label>
+                <input type="range" id="training-speed" min="1" max="10" value="5" step="1">
+                <span id="speed-value">5x</span>
+            </div>
+
+            <div class="log" id="log"></div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
