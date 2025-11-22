@@ -47,8 +47,6 @@ export class RLSandbox {
         this.lastAvgReturn = 0;
         this.lastActorLoss = 0;
         this.lastCriticLoss = 0;
-        
-        this.batchBuffer = [];
 
         this.initNetwork();
         this.setupControls();
@@ -80,7 +78,6 @@ export class RLSandbox {
     }
 
     initNetwork() {
-        this.batchBuffer = [];
         const hiddenSize = parseInt(document.getElementById('hidden-size').value);
         const depth = parseInt(document.getElementById('network-depth').value);
         const activation = document.getElementById('activation').value;
@@ -115,13 +112,7 @@ export class RLSandbox {
         document.getElementById('preset-exploration').addEventListener('click', () => this.applyPreset('exploration'));
         document.getElementById('preset-production').addEventListener('click', () => this.applyPreset('production'));
 
-        document.getElementById('hidden-size').addEventListener('change', (e) => {
-            const size = parseInt(e.target.value);
-            if (size < 16 || size > 256 || size % 8 !== 0) {
-                Toast.error('Hidden layer size must be between 16 and 256 (multiples of 8)');
-                e.target.value = '32';
-                return;
-            }
+        document.getElementById('hidden-size').addEventListener('change', () => {
             if (!this.isTraining && !this.isManual) {
                 this.initNetwork();
             }
@@ -159,6 +150,15 @@ export class RLSandbox {
             }
         });
 
+        document.getElementById('hidden-size').addEventListener('change', (e) => {
+            const size = parseInt(e.target.value);
+            if (size < 16 || size > 256 || size % 8 !== 0) {
+                Toast.error('Hidden layer size must be between 16 and 256 (multiples of 8)');
+                e.target.value = '32';
+                return;
+            }
+        });
+
         document.getElementById('entropy-coef').addEventListener('change', (e) => {
             const entropy = parseFloat(e.target.value);
             if (entropy < 0 || entropy > 0.1) {
@@ -173,6 +173,12 @@ export class RLSandbox {
             document.getElementById('gae-lambda-value').textContent = this.gaeLambda.toFixed(2);
         });
 
+        const speedSlider = document.getElementById('training-speed');
+        speedSlider.addEventListener('input', (e) => {
+            this.trainingSpeed = parseInt(e.target.value);
+            document.getElementById('speed-value').textContent = `${this.trainingSpeed}x`;
+        });
+
         // Heatmap controls
         this.heatmapUpdateInterval = 25;
         document.getElementById('heatmap-x-dim').addEventListener('change', (e) => {
@@ -184,7 +190,7 @@ export class RLSandbox {
                 return;
             }
             this.heatmap.setDimensions(xDim, yDim);
-            if (this.heatmap.heatmapData) this.heatmap.draw();
+            if (this.heatmap.heatmapData) this.heatmap.computeHeatmap(this.network, this.env);
         });
 
         document.getElementById('heatmap-y-dim').addEventListener('change', (e) => {
@@ -196,7 +202,7 @@ export class RLSandbox {
                 return;
             }
             this.heatmap.setDimensions(xDim, yDim);
-            if (this.heatmap.heatmapData) this.heatmap.draw();
+            if (this.heatmap.heatmapData) this.heatmap.computeHeatmap(this.network, this.env);
         });
 
         document.getElementById('heatmap-resolution').addEventListener('change', (e) => {
@@ -215,12 +221,6 @@ export class RLSandbox {
         document.getElementById('heatmap-update-interval').addEventListener('input', (e) => {
             this.heatmapUpdateInterval = parseInt(e.target.value);
             document.getElementById('update-interval-value').textContent = this.heatmapUpdateInterval;
-        });
-
-        const speedSlider = document.getElementById('training-speed');
-        speedSlider.addEventListener('input', (e) => {
-            this.trainingSpeed = parseInt(e.target.value);
-            document.getElementById('speed-value').textContent = `${this.trainingSpeed}x`;
         });
     }
 
@@ -297,9 +297,7 @@ export class RLSandbox {
             btn.textContent = 'Stop Manual';
             btn.className = 'secondary';
             hint.style.display = 'block';
-            if (touchControls) {
-                touchControls.style.display = 'flex';
-            }
+            touchControls.style.display = 'flex';
             this.setMode('MANUAL');
             this.env.reset();
             log('Manual control enabled - use arrow keys, A/D, or touch buttons');
@@ -308,9 +306,7 @@ export class RLSandbox {
             btn.textContent = 'Manual Control';
             btn.className = 'secondary';
             hint.style.display = 'none';
-            if (touchControls) {
-                touchControls.style.display = 'none';
-            }
+            touchControls.style.display = 'none';
             this.setMode('IDLE');
             log('Manual control disabled');
         }
@@ -418,32 +414,14 @@ export class RLSandbox {
 
             const result = this.env.step(action);
 
-            // Normalized inputs are roughly [-1, 1]
-            const xPos = normState[0];
-            const thetaPos = normState[2];
-            
-            // Shaping: Survival (0.1) + Upright Bonus (0.5) + Center Bonus (0.4) - Failure Penalty
-            // Using squared penalty for smooth gradients towards 0
-            let shapedReward = 0.1; 
-            
-            if (result.done) {
-                 shapedReward = -1.0;
-            } else {
-                shapedReward += 0.5 * (1.0 - thetaPos * thetaPos);
-                shapedReward += 0.4 * (1.0 - xPos * xPos);
-            }
+            // Standard CartPole rewards: +1 per step survived, 0 on failure
+            const shapedReward = result.done ? 0.0 : 1.0;
 
             totalReward += shapedReward;
-            
-            // Store probability of taken action for PPO
-            const policy = this.network.lastOutput || [0.5, 0.5];
-            const actionProb = policy[action];
-
             this.currentTrajectory.push({
                 state: [...normState], // Store normalized state
                 action: action,
-                reward: shapedReward,
-                prob: actionProb
+                reward: shapedReward
             });
 
             Object.assign(state, result.state);
@@ -462,45 +440,39 @@ export class RLSandbox {
         }
 
         if (train && this.currentTrajectory.length > 0) {
-            this.batchBuffer.push(this.currentTrajectory);
+            const gamma = parseFloat(document.getElementById('discount').value);
+            const entropyCoef = parseFloat(document.getElementById('entropy-coef').value);
 
-            if (this.batchBuffer.length >= CONSTANTS.BATCH_SIZE) {
-                const gamma = parseFloat(document.getElementById('discount').value);
-                const entropyCoef = parseFloat(document.getElementById('entropy-coef').value);
+            // Apply learning rate decay: LR *= 0.9995^episode
+            const decayedLR = this.initialLearningRate * Math.pow(0.9995, this.episode);
+            this.network.setLearningRate(decayedLR);
 
-                // Apply learning rate decay: LR *= 0.9995^episode
-                const decayedLR = this.initialLearningRate * Math.pow(0.9995, this.episode);
-                this.network.setLearningRate(decayedLR);
+            const updateMetrics = this.network.update(this.currentTrajectory, gamma, entropyCoef, 1.0, 2.0, this.gaeLambda);
 
-                const updateMetrics = this.network.update(this.batchBuffer, gamma, entropyCoef, 0.1, 2.0, this.gaeLambda);
+            // Store training diagnostics
+            this.lastGradNorm = updateMetrics.gradNorm;
+            this.lastAvgAdvantage = updateMetrics.avgAdvantage;
+            this.lastAvgReturn = updateMetrics.avgReturn;
+            this.lastActorLoss = updateMetrics.actorLoss;
+            this.lastCriticLoss = updateMetrics.criticLoss;
 
-                // Store training diagnostics
-                this.lastGradNorm = updateMetrics.gradNorm;
-                this.lastAvgAdvantage = updateMetrics.avgAdvantage;
-                this.lastAvgReturn = updateMetrics.avgReturn;
-                this.lastActorLoss = updateMetrics.actorLoss;
-                this.lastCriticLoss = updateMetrics.criticLoss;
+            // Update loss chart
+            this.lossChart.addDataPoint(updateMetrics.actorLoss, updateMetrics.criticLoss);
 
-                // Update loss chart
-                this.lossChart.addDataPoint(updateMetrics.actorLoss, updateMetrics.criticLoss);
+            // Update metrics dashboard
+            this.metricsDashboard.update({
+                gradNorm: updateMetrics.gradNorm,
+                avgAdvantage: updateMetrics.avgAdvantage,
+                avgReturn: updateMetrics.avgReturn
+            });
+            this.metricsDashboard.render();
 
-                // Update metrics dashboard
-                this.metricsDashboard.update({
-                    gradNorm: updateMetrics.gradNorm,
-                    avgAdvantage: updateMetrics.avgAdvantage,
-                    avgReturn: updateMetrics.avgReturn
-                });
-                this.metricsDashboard.render();
-
-                this.batchBuffer = [];
-            }
-
-            // Update heatmap at configurable interval
-            if (this.episode % this.heatmapUpdateInterval === 0) {
+            // Update heatmap every 25 episodes
+            if (this.episode % 25 === 0) {
                 try {
                     this.heatmap.computeHeatmap(this.network, this.env);
                 } catch (e) {
-                    console.error('Heatmap update failed:', e);
+                    // Silently fail if heatmap canvas not available
                 }
             }
 
@@ -564,7 +536,6 @@ export class RLSandbox {
         this.episode = 0;
         this.survivalHistory = [];
         this.explorationHistory = [];
-        this.batchBuffer = [];
         this.exploration = CONSTANTS.INITIAL_EXPLORATION; // Reset exploration
         this.chart.clear();
         this.lossChart.clear();
@@ -768,8 +739,7 @@ export class RLSandbox {
                 discount: parseFloat(document.getElementById('discount').value),
                 entropy: parseFloat(document.getElementById('entropy-coef').value),
                 hiddenSize: parseInt(document.getElementById('hidden-size').value),
-                networkDepth: parseInt(document.getElementById('network-depth').value),
-                gaeLambda: this.gaeLambda
+                networkDepth: parseInt(document.getElementById('network-depth').value)
             }
         };
 
@@ -807,11 +777,6 @@ export class RLSandbox {
                         document.getElementById('entropy-coef').value = data.hyperparameters.entropy;
                         document.getElementById('hidden-size').value = data.hyperparameters.hiddenSize;
                         document.getElementById('network-depth').value = data.hyperparameters.networkDepth;
-                        if (data.hyperparameters.gaeLambda !== undefined) {
-                            this.gaeLambda = data.hyperparameters.gaeLambda;
-                            document.getElementById('gae-lambda').value = data.hyperparameters.gaeLambda;
-                            document.getElementById('gae-lambda-value').textContent = data.hyperparameters.gaeLambda.toFixed(2);
-                        }
                     }
 
                     // Reinitialize network with saved config
@@ -877,8 +842,7 @@ export class RLSandbox {
                 entropy: 0.02,
                 hidden: 32,
                 depth: 1,
-                speed: 8,
-                gaeLambda: 0.95
+                speed: 8
             },
             deep: {
                 lr: 0.003,
@@ -886,8 +850,7 @@ export class RLSandbox {
                 entropy: 0.015,
                 hidden: 64,
                 depth: 2,
-                speed: 1,
-                gaeLambda: 0.95
+                speed: 1
             },
             exploration: {
                 lr: 0.002,
@@ -895,8 +858,7 @@ export class RLSandbox {
                 entropy: 0.05,
                 hidden: 32,
                 depth: 1,
-                speed: 3,
-                gaeLambda: 0.95
+                speed: 3
             },
             production: {
                 lr: 0.001,
@@ -904,8 +866,7 @@ export class RLSandbox {
                 entropy: 0.01,
                 hidden: 128,
                 depth: 2,
-                speed: 1,
-                gaeLambda: 0.95
+                speed: 1
             }
         };
 
@@ -923,9 +884,6 @@ export class RLSandbox {
         document.getElementById('network-depth').value = config.depth;
         this.trainingSpeed = config.speed;
         document.getElementById('training-speed').value = config.speed;
-        this.gaeLambda = config.gaeLambda;
-        document.getElementById('gae-lambda').value = config.gaeLambda;
-        document.getElementById('gae-lambda-value').textContent = config.gaeLambda.toFixed(2);
 
         // Reinitialize with new config
         this.initNetwork();

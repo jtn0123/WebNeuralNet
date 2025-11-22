@@ -199,13 +199,14 @@ export class StateSpaceHeatmap {
 
         // Draw info text
         if (this.valueStats) {
-            ctx.fillStyle = '#666';
-            ctx.font = '10px sans-serif';
+            ctx.fillStyle = '#888';
+            ctx.font = '11px sans-serif';
             ctx.textAlign = 'left';
-            const infoY = height - 5;
-            const minVal = this.valueStats.min.toFixed(2);
-            const maxVal = this.valueStats.max.toFixed(2);
-            ctx.fillText(`Range: [${minVal}, ${maxVal}] | Updated: Episode ${this.lastUpdateEpisode}`, padding, infoY);
+            const infoY = height - 6;
+            const minVal = this.valueStats.min.toFixed(1);
+            const maxVal = this.valueStats.max.toFixed(1);
+            const rangeText = `Value range: ${minVal} to ${maxVal}  |  Updated: Episode ${this.lastUpdateEpisode}`;
+            ctx.fillText(rangeText, padding, infoY);
         }
     }
 
