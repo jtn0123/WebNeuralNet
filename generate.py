@@ -1257,8 +1257,8 @@ html_v3 = r"""<!DOCTYPE html>
             update(param, grad) {
                 this.t++;
 
-                if (Array.isArray(param[0])) {
-                    // 2D array (matrix)
+                if (param[0] && typeof param[0].length === 'number') {
+                    // 2D array (matrix of Float32Arrays or arrays)
                     for (let i = 0; i < param.length; i++) {
                         for (let j = 0; j < param[i].length; j++) {
                             this.m[i][j] = this.beta1 * this.m[i][j] + (1 - this.beta1) * grad[i][j];
