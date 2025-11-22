@@ -25,3 +25,29 @@ export function log(message) {
         logDiv.removeChild(logDiv.firstChild);
     }
 }
+
+// Copy all logs to clipboard
+export async function copyLogs() {
+    const logDiv = document.getElementById('log');
+    const entries = Array.from(logDiv.querySelectorAll('.log-entry'));
+    const logsText = entries.map(entry => entry.textContent).join('\n');
+
+    try {
+        await navigator.clipboard.writeText(logsText);
+        // Provide visual feedback
+        const btn = document.getElementById('copy-logs-btn');
+        const originalText = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.style.background = '#ffff00';
+        btn.style.color = '#000000';
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = '';
+            btn.style.color = '';
+        }, 1500);
+        return true;
+    } catch (err) {
+        console.error('Failed to copy logs:', err);
+        return false;
+    }
+}

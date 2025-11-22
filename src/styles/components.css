@@ -25,6 +25,14 @@
     border: 2px solid #667eea;
 }
 
+#state-space-heatmap {
+    width: 100%;
+    height: 250px;
+    background: white;
+    border-radius: 8px;
+    border: 2px solid #667eea;
+}
+
 /* Button Variants */
 button.primary {
     background: #667eea;
@@ -111,6 +119,11 @@ button.secondary {
 }
 
 /* Log Component */
+.log-container {
+    position: relative;
+    margin-top: 12px;
+}
+
 .log {
     background: #1e1e1e;
     color: #00ff00;
@@ -120,11 +133,35 @@ button.secondary {
     font-size: 12px;
     max-height: 150px;
     overflow-y: auto;
-    margin-top: 12px;
 }
 
 .log-entry {
     margin-bottom: 4px;
+}
+
+.copy-logs-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    padding: 4px 8px;
+    background: #00ff00;
+    color: #1e1e1e;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 10;
+    transition: all 0.2s ease;
+}
+
+.copy-logs-btn:hover {
+    background: #33ff33;
+    transform: scale(1.05);
+}
+
+.copy-logs-btn:active {
+    transform: scale(0.95);
 }
 
 /* Action Bars */
@@ -289,6 +326,35 @@ button.secondary {
     color: #856404;
 }
 
+/* Touch Controls for Mobile */
+.touch-controls {
+    display: flex;
+    gap: 12px;
+    margin-top: 12px;
+    justify-content: center;
+}
+
+.touch-btn {
+    flex: 1;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    background: #667eea;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    max-width: 200px;
+}
+
+.touch-btn:active {
+    background: #5567d8;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    transform: scale(0.98);
+}
+
 /* Feature Panel */
 .feature-panel {
     background: white;
@@ -381,6 +447,7 @@ button.secondary {
     padding: 12px;
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    position: relative;
 }
 
 .state-bar-label {
@@ -572,7 +639,7 @@ button.secondary {
     display: block;
     position: absolute;
     top: 0;
-    left: 50%;
+    left: 0;
     width: 4px;
     height: 100%;
     background: #4caf50;

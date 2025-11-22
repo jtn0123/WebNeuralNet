@@ -1,5 +1,5 @@
 import { CONSTANTS } from '../utils/constants.js';
-import { log } from '../utils/helpers.js';
+import { log, copyLogs } from '../utils/helpers.js';
 import { Toast } from '../utils/toast.js';
 import { CartPole } from '../ml/cartpole.js';
 import { ActorCriticNetwork } from '../ml/actor_critic_network.js';
@@ -9,7 +9,6 @@ import { TrainingChart } from '../viz/training_chart.js';
 import { TrainingLossChart } from '../viz/training_loss_chart.js';
 import { StateSpaceHeatmap } from '../viz/state_space_heatmap.js';
 import { MetricsDashboard } from '../ui/metrics_dashboard.js';
-import { ReplayBuffer } from '../ui/replay_buffer.js';
 
 // Main application
 export class RLSandbox {
@@ -23,9 +22,7 @@ export class RLSandbox {
         // Advanced features
         this.lossChart = new TrainingLossChart('training-loss-chart');
         this.metricsDashboard = new MetricsDashboard();
-        this.replayBuffer = new ReplayBuffer();
         this.heatmap = new StateSpaceHeatmap('state-space-heatmap');
-        this.useReplayBuffer = false;
 
         this.isTraining = false;
         this.isTesting = false;
@@ -33,13 +30,16 @@ export class RLSandbox {
         this.isPaused = false;
         this.episode = 0;
         this.survivalHistory = [];
+        this.explorationHistory = [];
         this.currentTrajectory = [];
         this.manualAction = null;
         this.trainingSpeed = CONSTANTS.DEFAULT_TRAINING_SPEED;
         this.exploration = CONSTANTS.INITIAL_EXPLORATION;
         this.explorationDecay = CONSTANTS.EXPLORATION_DECAY;
         this.minExploration = CONSTANTS.MIN_EXPLORATION;
+        this.gaeLambda = CONSTANTS.DEFAULT_GAE_LAMBDA;
         this.frameCounter = 0; // For SVG update throttling
+        this.initialLearningRate = parseFloat(document.getElementById('learning-rate').value);
 
         // Training diagnostics
         this.lastGradNorm = 0;
@@ -47,6 +47,8 @@ export class RLSandbox {
         this.lastAvgReturn = 0;
         this.lastActorLoss = 0;
         this.lastCriticLoss = 0;
+        
+        this.batchBuffer = [];
 
         this.initNetwork();
         this.setupControls();
@@ -78,6 +80,7 @@ export class RLSandbox {
     }
 
     initNetwork() {
+        this.batchBuffer = [];
         const hiddenSize = parseInt(document.getElementById('hidden-size').value);
         const depth = parseInt(document.getElementById('network-depth').value);
         const activation = document.getElementById('activation').value;
@@ -97,6 +100,9 @@ export class RLSandbox {
         document.getElementById('test-btn').addEventListener('click', () => this.testPolicy());
         document.getElementById('reset-btn').addEventListener('click', () => this.resetPolicy());
         document.getElementById('manual-btn').addEventListener('click', () => this.toggleManual());
+
+        // Log Management
+        document.getElementById('copy-logs-btn').addEventListener('click', () => copyLogs());
 
         // Network Management buttons
         document.getElementById('save-network-btn').addEventListener('click', () => this.saveNetwork());
@@ -129,8 +135,45 @@ export class RLSandbox {
 
         document.getElementById('learning-rate').addEventListener('change', (e) => {
             const lr = parseFloat(e.target.value);
+            if (lr < 0.0001 || lr > 0.01) {
+                Toast.error('Learning rate must be between 0.0001 and 0.01');
+                e.target.value = '0.003';
+                return;
+            }
             this.network.setLearningRate(lr);
             log(`Learning rate updated to ${lr}`);
+        });
+
+        document.getElementById('discount').addEventListener('change', (e) => {
+            const gamma = parseFloat(e.target.value);
+            if (gamma < 0.9 || gamma > 1.0) {
+                Toast.error('Discount factor must be between 0.9 and 1.0');
+                e.target.value = '0.99';
+                return;
+            }
+        });
+
+        document.getElementById('hidden-size').addEventListener('change', (e) => {
+            const size = parseInt(e.target.value);
+            if (size < 16 || size > 256 || size % 8 !== 0) {
+                Toast.error('Hidden layer size must be between 16 and 256 (multiples of 8)');
+                e.target.value = '32';
+                return;
+            }
+        });
+
+        document.getElementById('entropy-coef').addEventListener('change', (e) => {
+            const entropy = parseFloat(e.target.value);
+            if (entropy < 0 || entropy > 0.1) {
+                Toast.error('Entropy coefficient must be between 0 and 0.1');
+                e.target.value = '0.02';
+                return;
+            }
+        });
+
+        document.getElementById('gae-lambda').addEventListener('input', (e) => {
+            this.gaeLambda = parseFloat(e.target.value);
+            document.getElementById('gae-lambda-value').textContent = this.gaeLambda.toFixed(2);
         });
 
         const speedSlider = document.getElementById('training-speed');
@@ -152,6 +195,40 @@ export class RLSandbox {
                 e.preventDefault();
             }
         });
+
+        // Touch controls for mobile
+        const touchLeftBtn = document.getElementById('touch-left');
+        const touchRightBtn = document.getElementById('touch-right');
+
+        if (touchLeftBtn) {
+            touchLeftBtn.addEventListener('touchstart', () => {
+                if (this.isManual) this.manualAction = 0;
+            });
+            touchLeftBtn.addEventListener('touchend', () => {
+                if (this.isManual) this.manualAction = null;
+            });
+            touchLeftBtn.addEventListener('mousedown', () => {
+                if (this.isManual) this.manualAction = 0;
+            });
+            touchLeftBtn.addEventListener('mouseup', () => {
+                if (this.isManual) this.manualAction = null;
+            });
+        }
+
+        if (touchRightBtn) {
+            touchRightBtn.addEventListener('touchstart', () => {
+                if (this.isManual) this.manualAction = 1;
+            });
+            touchRightBtn.addEventListener('touchend', () => {
+                if (this.isManual) this.manualAction = null;
+            });
+            touchRightBtn.addEventListener('mousedown', () => {
+                if (this.isManual) this.manualAction = 1;
+            });
+            touchRightBtn.addEventListener('mouseup', () => {
+                if (this.isManual) this.manualAction = null;
+            });
+        }
     }
 
     setMode(mode) {
@@ -173,19 +250,22 @@ export class RLSandbox {
         this.isManual = !this.isManual;
         const btn = document.getElementById('manual-btn');
         const hint = document.getElementById('keyboard-hint');
+        const touchControls = document.getElementById('touch-controls');
 
         if (this.isManual) {
             btn.textContent = 'Stop Manual';
             btn.className = 'secondary';
             hint.style.display = 'block';
+            touchControls.style.display = 'flex';
             this.setMode('MANUAL');
             this.env.reset();
-            log('Manual control enabled - use arrow keys or A/D');
+            log('Manual control enabled - use arrow keys, A/D, or touch buttons');
             this.manualLoop();
         } else {
             btn.textContent = 'Manual Control';
             btn.className = 'secondary';
             hint.style.display = 'none';
+            touchControls.style.display = 'none';
             this.setMode('IDLE');
             log('Manual control disabled');
         }
@@ -286,34 +366,39 @@ export class RLSandbox {
             // Normalize state for network
             const normState = this.normalizeState(state);
 
-            // Use exploration during training
+            // Use reduced epsilon-greedy with entropy bonus (combined exploration)
             const action = train ?
                 this.network.selectAction(normState, this.exploration) :
                 this.network.selectAction(normState, 0);
 
             const result = this.env.step(action);
 
-            // Simpler reward shaping - less harsh penalties
-            let shapedReward = result.reward;
-            if (!result.done) {
-                // Base reward for staying alive
-                shapedReward = 1.0;
-
-                // Small penalty for large angles (encourage vertical)
-                shapedReward -= CONSTANTS.ANGLE_PENALTY * Math.abs(this.env.theta);
-
-                // Tiny penalty for being off-center
-                shapedReward -= CONSTANTS.POSITION_PENALTY * Math.abs(this.env.x);
+            // Normalized inputs are roughly [-1, 1]
+            const xPos = normState[0];
+            const thetaPos = normState[2];
+            
+            // Shaping: Survival (0.1) + Upright Bonus (0.5) + Center Bonus (0.4) - Failure Penalty
+            // Using squared penalty for smooth gradients towards 0
+            let shapedReward = 0.1; 
+            
+            if (result.done) {
+                 shapedReward = -1.0;
             } else {
-                // Failure penalty proportional to how early it failed
-                shapedReward = CONSTANTS.FAILURE_REWARD;
+                shapedReward += 0.5 * (1.0 - thetaPos * thetaPos);
+                shapedReward += 0.4 * (1.0 - xPos * xPos);
             }
 
             totalReward += shapedReward;
+            
+            // Store probability of taken action for PPO
+            const policy = this.network.lastOutput || [0.5, 0.5];
+            const actionProb = policy[action];
+
             this.currentTrajectory.push({
                 state: [...normState], // Store normalized state
                 action: action,
-                reward: shapedReward
+                reward: shapedReward,
+                prob: actionProb
             });
 
             Object.assign(state, result.state);
@@ -332,27 +417,38 @@ export class RLSandbox {
         }
 
         if (train && this.currentTrajectory.length > 0) {
-            const gamma = parseFloat(document.getElementById('discount').value);
-            const entropyCoef = parseFloat(document.getElementById('entropy-coef').value);
-            const updateMetrics = this.network.update(this.currentTrajectory, gamma, entropyCoef);
+            this.batchBuffer.push(this.currentTrajectory);
 
-            // Store training diagnostics
-            this.lastGradNorm = updateMetrics.gradNorm;
-            this.lastAvgAdvantage = updateMetrics.avgAdvantage;
-            this.lastAvgReturn = updateMetrics.avgReturn;
-            this.lastActorLoss = updateMetrics.actorLoss;
-            this.lastCriticLoss = updateMetrics.criticLoss;
+            if (this.batchBuffer.length >= CONSTANTS.BATCH_SIZE) {
+                const gamma = parseFloat(document.getElementById('discount').value);
+                const entropyCoef = parseFloat(document.getElementById('entropy-coef').value);
 
-            // Update loss chart
-            this.lossChart.addDataPoint(updateMetrics.actorLoss, updateMetrics.criticLoss);
+                // Apply learning rate decay: LR *= 0.9995^episode
+                const decayedLR = this.initialLearningRate * Math.pow(0.9995, this.episode);
+                this.network.setLearningRate(decayedLR);
 
-            // Update metrics dashboard
-            this.metricsDashboard.update({
-                gradNorm: updateMetrics.gradNorm,
-                avgAdvantage: updateMetrics.avgAdvantage,
-                avgReturn: updateMetrics.avgReturn
-            });
-            this.metricsDashboard.render();
+                const updateMetrics = this.network.update(this.batchBuffer, gamma, entropyCoef, 1.0, 2.0, this.gaeLambda);
+
+                // Store training diagnostics
+                this.lastGradNorm = updateMetrics.gradNorm;
+                this.lastAvgAdvantage = updateMetrics.avgAdvantage;
+                this.lastAvgReturn = updateMetrics.avgReturn;
+                this.lastActorLoss = updateMetrics.actorLoss;
+                this.lastCriticLoss = updateMetrics.criticLoss;
+
+                // Update loss chart
+                this.lossChart.addDataPoint(updateMetrics.actorLoss, updateMetrics.criticLoss);
+
+                // Update metrics dashboard
+                this.metricsDashboard.update({
+                    gradNorm: updateMetrics.gradNorm,
+                    avgAdvantage: updateMetrics.avgAdvantage,
+                    avgReturn: updateMetrics.avgReturn
+                });
+                this.metricsDashboard.render();
+
+                this.batchBuffer = [];
+            }
 
             // Update heatmap every 25 episodes
             if (this.episode % 25 === 0) {
@@ -369,8 +465,10 @@ export class RLSandbox {
 
         this.episode++;
         this.survivalHistory.push(this.env.steps);
+        this.explorationHistory.push(this.exploration);
         if (this.survivalHistory.length > CONSTANTS.SURVIVAL_HISTORY_MAX) {
             this.survivalHistory.shift();
+            this.explorationHistory.shift();
         }
 
         this.chart.addDataPoint(this.episode, this.env.steps);
@@ -420,11 +518,12 @@ export class RLSandbox {
 
         this.episode = 0;
         this.survivalHistory = [];
+        this.explorationHistory = [];
+        this.batchBuffer = [];
         this.exploration = CONSTANTS.INITIAL_EXPLORATION; // Reset exploration
         this.chart.clear();
         this.lossChart.clear();
         this.heatmap.clear();
-        this.replayBuffer.clear();
         this.initNetwork();
         this.env.reset();
         this.updateMetrics();
@@ -494,6 +593,31 @@ export class RLSandbox {
         const thetaDotBarPct = 50 + (thetaDot / maxThetaDot) * 50;
         document.getElementById('thetadot-bar').style.width = Math.max(0, Math.min(100, thetaDotBarPct)) + '%';
         document.getElementById('thetadot-value').textContent = thetaDot.toFixed(2);
+
+        // Update "What the Network Sees (State Observations)" section
+        // Cart position
+        document.getElementById('value-x').textContent = x.toFixed(2);
+        const xBarPct = 50 + (x / maxX) * 50;
+        document.getElementById('indicator-x').style.width = Math.max(0, Math.min(100, xBarPct)) + '%';
+        document.getElementById('indicator-x').className = 'state-indicator' + (xNorm > 0.6 ? ' danger' : '');
+
+        // Cart velocity
+        document.getElementById('value-xdot').textContent = xDot.toFixed(2);
+        const xDotBarPct = 50 + (xDot / maxXDot) * 50;
+        document.getElementById('indicator-xdot').style.width = Math.max(0, Math.min(100, xDotBarPct)) + '%';
+        document.getElementById('indicator-xdot').className = 'state-indicator' + (xDotNorm > 0.4 ? ' warning' : '');
+
+        // Pole angle
+        document.getElementById('value-theta').textContent = thetaDeg.toFixed(1);
+        const thetaIndicatorPct = 50 + (theta / maxTheta) * 50;
+        document.getElementById('indicator-theta').style.width = Math.max(0, Math.min(100, thetaIndicatorPct)) + '%';
+        document.getElementById('indicator-theta').className = 'state-indicator' + (thetaNorm > CONSTANTS.POLE_CRITICAL_THRESHOLD ? ' danger' : thetaNorm > CONSTANTS.POLE_WARNING_THRESHOLD ? ' warning' : '');
+
+        // Angular velocity
+        document.getElementById('value-thetadot').textContent = thetaDot.toFixed(2);
+        const thetaDotIndicatorPct = 50 + (thetaDot / maxThetaDot) * 50;
+        document.getElementById('indicator-thetadot').style.width = Math.max(0, Math.min(100, thetaDotIndicatorPct)) + '%';
+        document.getElementById('indicator-thetadot').className = 'state-indicator' + (thetaDotNorm > 0.5 ? ' warning' : '');
 
         // Calculate and display input importance
         const importance = this.network.getInputImportance(this.normalizeState(state));
@@ -645,6 +769,7 @@ export class RLSandbox {
                     // Restore activation function from saved data
                     if (data.network && data.network.activation) {
                         this.network.activation = data.network.activation;
+                        document.getElementById('activation').value = data.network.activation;
                     }
 
                     // Restore weights
@@ -677,7 +802,7 @@ export class RLSandbox {
         let csv = 'Episode,Survival_Steps,Actor_Loss,Critic_Loss,Exploration_Rate\n';
 
         for (let i = 0; i < this.survivalHistory.length; i++) {
-            csv += `${i + 1},${this.survivalHistory[i]},${this.lossChart.actorLosses[i] || 0},${this.lossChart.criticLosses[i] || 0},${this.exploration}\n`;
+            csv += `${i + 1},${this.survivalHistory[i]},${this.lossChart.actorLosses[i] || 0},${this.lossChart.criticLosses[i] || 0},${this.explorationHistory[i] || 0}\n`;
         }
 
         const blob = new Blob([csv], { type: 'text/csv' });

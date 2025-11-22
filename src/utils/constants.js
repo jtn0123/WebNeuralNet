@@ -30,6 +30,8 @@ export const CONSTANTS = {
     EXPLORATION_DECAY: 0.998,
     MIN_EXPLORATION: 0.05,
     DEFAULT_TRAINING_SPEED: 5,
+    DEFAULT_GAE_LAMBDA: 0.95,
+    BATCH_SIZE: 5,
 
     // Network visualization
     NODE_RADIUS: 7,

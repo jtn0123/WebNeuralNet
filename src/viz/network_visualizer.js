@@ -52,37 +52,71 @@ export class NetworkVisualizer {
         // Draw connections
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
-        for (let layerIdx = 0; layerIdx < layers.length - 1; layerIdx++) {
+        for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
             const currentLayer = layers[layerIdx];
-            const nextLayer = layers[layerIdx + 1];
+            const targets = [];
 
-            let weights = null;
-
-            // Get appropriate weights
-            if (currentLayer.type === 'input' && nextLayer.type === 'hidden') {
-                weights = network.layers[0].w;
-            } else if (currentLayer.type === 'hidden' && nextLayer.type === 'hidden') {
-                weights = network.layers[nextLayer.layerIdx].w;
-            } else if (currentLayer.type === 'hidden' && nextLayer.type === 'actor') {
-                weights = network.actorHead.w;
-            } else if (currentLayer.type === 'hidden' && nextLayer.type === 'critic') {
-                weights = network.criticHead.w;
+            if (currentLayer.type === 'input') {
+                // Connect to first hidden layer
+                const nextLayer = layers.find(l => l.type === 'hidden' && l.layerIdx === 0);
+                if (nextLayer) {
+                    targets.push({
+                        layer: nextLayer,
+                        weights: network.layers[0].w,
+                        idx: layers.indexOf(nextLayer)
+                    });
+                }
+            } else if (currentLayer.type === 'hidden') {
+                // Connect to next hidden layer if it exists
+                const nextHidden = layers.find(l => l.type === 'hidden' && l.layerIdx === currentLayer.layerIdx + 1);
+                if (nextHidden) {
+                    targets.push({
+                        layer: nextHidden,
+                        weights: network.layers[nextHidden.layerIdx].w,
+                        idx: layers.indexOf(nextHidden)
+                    });
+                } else {
+                    // Last hidden layer connects to BOTH Actor and Critic
+                    const actor = layers.find(l => l.type === 'actor');
+                    const critic = layers.find(l => l.type === 'critic');
+                    
+                    if (actor) {
+                        targets.push({
+                            layer: actor,
+                            weights: network.actorHead.w,
+                            idx: layers.indexOf(actor)
+                        });
+                    }
+                    
+                    if (critic) {
+                        targets.push({
+                            layer: critic,
+                            weights: network.criticHead.w,
+                            idx: layers.indexOf(critic)
+                        });
+                    }
+                }
             }
 
-            if (weights) {
+            // Draw connections to all targets
+            for (const target of targets) {
+                const nextLayer = target.layer;
+                const nextLayerIdx = target.idx;
+                const weights = target.weights;
+
                 for (let i = 0; i < currentLayer.size; i++) {
                     for (let j = 0; j < nextLayer.size; j++) {
                         const weight = weights[i][j];
                         const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                         line.setAttribute('x1', positions[layerIdx][i].x);
                         line.setAttribute('y1', positions[layerIdx][i].y);
-                        line.setAttribute('x2', positions[layerIdx + 1][j].x);
-                        line.setAttribute('y2', positions[layerIdx + 1][j].y);
+                        line.setAttribute('x2', positions[nextLayerIdx][j].x);
+                        line.setAttribute('y2', positions[nextLayerIdx][j].y);
 
                         const opacity = Math.min(1, Math.abs(weight) * 2);
                         let color = weight > 0 ? '#4caf50' : '#f44336';
 
-                        // Different color for critic
+                        // Different color for critic connections
                         if (nextLayer.type === 'critic') {
                             color = weight > 0 ? '#2196f3' : '#ff9800';
                         }

@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CartPole Actor-Critic RL Sandbox</title>
-  <script type="module" crossorigin src="/assets/index-DcYqqzhB.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-D7XAZnuM.css">
+  <script type="module" crossorigin src="/assets/index-ntayuieU.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-C9sdNr8T.css">
 </head>
 <body>
     <div class="container">
@@ -36,6 +36,11 @@
                 </div>
                 <div id="keyboard-hint" class="keyboard-hint" style="display: none;">
                     Use LEFT/RIGHT arrow keys or A/D to control the cart
+                </div>
+
+                <div id="touch-controls" class="touch-controls" style="display: none;">
+                    <button class="touch-btn" id="touch-left">← LEFT</button>
+                    <button class="touch-btn" id="touch-right">RIGHT →</button>
                 </div>
 
                 <!-- Network Management Panel -->
@@ -338,7 +343,7 @@
             <div class="settings">
                 <div class="setting">
                     <label>Learning Rate</label>
-                    <input type="number" id="learning-rate" value="0.003" step="0.0001" min="0.0001" max="0.01">
+                    <input type="number" id="learning-rate" value="0.0005" step="0.0001" min="0.0001" max="0.01">
                 </div>
                 <div class="setting">
                     <label>Discount Factor (γ)</label>
@@ -368,6 +373,11 @@
                 <div class="setting">
                     <label>Entropy Coefficient</label>
                     <input type="number" id="entropy-coef" value="0.02" step="0.001" min="0" max="0.1">
+                </div>
+                <div class="setting">
+                    <label>GAE Lambda (λ): <span id="gae-lambda-value">0.95</span></label>
+                    <input type="range" id="gae-lambda" min="0.90" max="0.99" step="0.01" value="0.95">
+                    <div style="font-size: 11px; color: #666; margin-top: 4px;">Higher = more variance, lower = more bias</div>
                 </div>
             </div>
 

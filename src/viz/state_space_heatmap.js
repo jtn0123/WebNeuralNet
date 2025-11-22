@@ -62,9 +62,10 @@ export class StateSpaceHeatmap {
         const width = this.canvas.width;
         const height = this.canvas.height;
         const gridSize = this.heatmapData.length;
+        const padding = 30;
 
-        const cellWidth = width / gridSize;
-        const cellHeight = height / gridSize;
+        const cellWidth = (width - padding) / gridSize;
+        const cellHeight = (height - padding) / gridSize;
 
         for (let i = 0; i < gridSize; i++) {
             for (let j = 0; j < gridSize; j++) {
@@ -82,18 +83,20 @@ export class StateSpaceHeatmap {
                 }
 
                 ctx.fillStyle = color;
-                ctx.fillRect(i * cellWidth, j * cellHeight, cellWidth, cellHeight);
+                ctx.fillRect(padding + i * cellWidth, j * cellHeight, cellWidth, cellHeight);
             }
         }
 
         // Labels
         ctx.fillStyle = '#333';
         ctx.font = '11px sans-serif';
-        ctx.fillText('Position', width / 2, height + 15);
-        ctx.save();
-        ctx.translate(-15, height / 2);
-        ctx.rotate(-Math.PI / 2);
         ctx.textAlign = 'center';
+        ctx.fillText('Position', padding + (width - padding) / 2, height - 8);
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.translate(12, height / 2);
+        ctx.rotate(-Math.PI / 2);
         ctx.fillText('Angle', 0, 0);
         ctx.restore();
     }

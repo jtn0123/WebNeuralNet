@@ -167,8 +167,8 @@ export class ActorCriticNetwork {
     selectAction(state, exploration = 0.0) {
         const { policy } = this.forward(state);
 
-        // Epsilon-greedy exploration
-        if (exploration > 0 && Math.random() < exploration) {
+        // Epsilon-greedy exploration with reduced probability
+        if (exploration > 0 && Math.random() < exploration * 0.5) {
             return Math.random() < 0.5 ? 0 : 1;
         }
 
@@ -206,45 +206,63 @@ export class ActorCriticNetwork {
         return count > 0 ? sum / count : 0;
     }
 
-    // Actor-Critic update with GAE (Generalized Advantage Estimation)
-    update(trajectory, gamma, entropyCoef = 0.01, valueCoef = 0.5, maxGradNorm = 1.0, gae_lambda = 0.95) {
-        // Calculate returns and values
-        const returns = [];
-        const values = [];
-        const advantages = [];
+    // Actor-Critic update with GAE (Generalized Advantage Estimation) and Batch Processing
+    update(trajectories, gamma, entropyCoef = 0.01, valueCoef = 0.1, maxGradNorm = 1.0, gae_lambda = 0.95) {
+        // Handle single trajectory case for backward compatibility
+        if (!Array.isArray(trajectories[0])) {
+            trajectories = [trajectories];
+        }
+
+        const allAdvantages = [];
+        const allReturns = [];
+        const allValues = [];
+        const flatTrajectory = [];
+
         let totalActorLoss = 0;
         let totalCriticLoss = 0;
 
-        // Forward pass to get all values
-        for (let i = 0; i < trajectory.length; i++) {
-            const { value } = this.forward(trajectory[i].state);
-            values.push(value);
+        // 1. Calculate Returns and Advantages for each trajectory
+        for (const trajectory of trajectories) {
+            const values = [];
+            
+            // Forward pass to get values
+            for (let i = 0; i < trajectory.length; i++) {
+                const { value } = this.forward(trajectory[i].state);
+                values.push(value);
+                flatTrajectory.push(trajectory[i]);
+                allValues.push(value);
+            }
+
+            // Calculate TD residuals and GAE
+            let gae = 0;
+            const trajectoryAdvantages = new Array(trajectory.length);
+            const trajectoryReturns = new Array(trajectory.length);
+
+            for (let i = trajectory.length - 1; i >= 0; i--) {
+                const reward = trajectory[i].reward;
+                const value = values[i];
+                const nextValue = i < trajectory.length - 1 ? values[i + 1] : 0;
+
+                // TD error: δ = r + γV(s') - V(s)
+                const delta = reward + gamma * nextValue - value;
+
+                // GAE: A = δ + (γλ)δ' + (γλ)²δ'' + ...
+                gae = delta + gamma * gae_lambda * gae;
+                
+                trajectoryAdvantages[i] = gae;
+                trajectoryReturns[i] = gae + value;
+            }
+            
+            allAdvantages.push(...trajectoryAdvantages);
+            allReturns.push(...trajectoryReturns);
         }
 
-        // Calculate TD residuals and GAE advantages
-        let gae = 0;
-        for (let i = trajectory.length - 1; i >= 0; i--) {
-            const reward = trajectory[i].reward;
-            const value = values[i];
-            const nextValue = i < trajectory.length - 1 ? values[i + 1] : 0;
+        // 2. Normalize advantages across the entire batch
+        const advMean = allAdvantages.reduce((a, b) => a + b, 0) / allAdvantages.length;
+        const advStd = Math.sqrt(allAdvantages.reduce((a, b) => a + (b - advMean) ** 2, 0) / allAdvantages.length);
+        const normalizedAdv = allAdvantages.map(a => (a - advMean) / Math.max(advStd, 1e-8));
 
-            // TD error: δ = r + γV(s') - V(s)
-            const delta = reward + gamma * nextValue - value;
-
-            // GAE: A = δ + (γλ)δ' + (γλ)²δ'' + ...
-            gae = delta + gamma * gae_lambda * gae;
-            advantages.unshift(gae);
-
-            // Return = A + V
-            returns.unshift(gae + value);
-        }
-
-        // Normalize advantages (critical for stability)
-        const advMean = advantages.reduce((a, b) => a + b, 0) / advantages.length;
-        const advStd = Math.sqrt(advantages.reduce((a, b) => a + (b - advMean) ** 2, 0) / advantages.length);
-        const normalizedAdv = advantages.map(a => (a - advMean) / (advStd + 1e-8));
-
-        // Accumulate gradients with Float32Array
+        // Initialize gradient accumulators
         const layerGrads = this.layers.map(layer => ({
             w: layer.w.map(row => new Float32Array(row.length)),
             b: new Float32Array(layer.b.length)
@@ -260,13 +278,17 @@ export class ActorCriticNetwork {
             b: new Float32Array(this.criticHead.b.length)
         };
 
-        for (let t = 0; t < trajectory.length; t++) {
-            const { state, action } = trajectory[t];
-            const advantage = normalizedAdv[t];
-            const returnValue = returns[t];
-
-            // Forward pass
-            const { policy, value } = this.forward(state);
+        // 3. Accumulate gradients
+        for (let i = 0; i < flatTrajectory.length; i++) {
+            const { state, action } = flatTrajectory[i];
+            const advantage = normalizedAdv[i];
+            const returnValue = allReturns[i];
+            const value = allValues[i]; // Use stored value to avoid re-forwarding (optional optimization, but safer to re-forward if graph is complex, here it's fine to re-use or re-compute. Let's re-compute to be safe with state)
+            
+            // Re-forward to ensure we have the correct internal state for backprop if needed
+            // In this simple implementation, 'forward' sets 'lastHidden' etc. needed for backprop.
+            // So we MUST call forward again before backprop for THIS specific sample.
+            const { policy } = this.forward(state);
 
             // Actor loss: -log(π(a|s)) * A(s,a) - H(π(s)) * entropy_coef
             const actionProb = policy[action];
@@ -278,87 +300,80 @@ export class ActorCriticNetwork {
             const actorLoss = -logProb * advantage - entropyCoef * entropy;
             totalActorLoss += actorLoss;
 
-            // Critic loss: MSE between value and return
-            const criticLoss = valueCoef * (value - returnValue) ** 2;
-            totalCriticLoss += criticLoss;
+            // Critic loss: Huber Loss
+            const diff = value - returnValue;
+            const absDiff = Math.abs(diff);
+            const huberDelta = 1.0;
+            let sampleCriticLoss, gradFactor;
 
-            // Actor loss gradients (policy gradient with advantage)
+            if (absDiff <= huberDelta) {
+                sampleCriticLoss = 0.5 * diff * diff;
+                gradFactor = diff;
+            } else {
+                sampleCriticLoss = huberDelta * (absDiff - 0.5 * huberDelta);
+                gradFactor = huberDelta * Math.sign(diff);
+            }
+            
+            totalCriticLoss += valueCoef * sampleCriticLoss;
+
+            // Actor gradients
             const actorOutputGrad = new Float32Array(policy);
-
             actorOutputGrad[action] -= 1;
-            for (let i = 0; i < this.outputSize; i++) {
-                actorOutputGrad[i] *= advantage;
-                // Entropy bonus: d(beta * H)/dz = beta * p * (log(p) + H)
-                // We want to ascend, so we subtract negative gradient: - ( - beta * ... )
-                // Gradient collected is negative of objective gradient.
-                actorOutputGrad[i] += entropyCoef * policy[i] * (Math.log(policy[i] + 1e-10) + entropy);
+            for (let j = 0; j < this.outputSize; j++) {
+                actorOutputGrad[j] *= advantage;
+                const p = policy[j];
+                if (p > 1e-10) {
+                    actorOutputGrad[j] -= entropyCoef * 0.5 * (Math.log(p) + 1) * p;
+                }
             }
 
-            // Critic loss gradients (MSE with returns)
+            // Critic gradients (derived from Huber Loss)
             const criticOutputGrad = new Float32Array(1);
-            criticOutputGrad[0] = 2 * valueCoef * (value - returnValue);
+            criticOutputGrad[0] = valueCoef * gradFactor;
 
-            // Backprop through network
+            // Backprop
             this.backprop(state, actorOutputGrad, criticOutputGrad, layerGrads, actorGrad, criticGrad);
         }
 
-        // Clip gradients by global norm
-        const totalNorm = this.getGradientNorm([...layerGrads, actorGrad, criticGrad]);
+        // 4. Average and Clip Gradients
+        const batchSize = flatTrajectory.length;
+        const allGrads = [...layerGrads, actorGrad, criticGrad];
+
+        // Scale by 1/batchSize
+        for (const grad of allGrads) {
+            for (let i = 0; i < grad.w.length; i++) {
+                for (let j = 0; j < grad.w[i].length; j++) {
+                    grad.w[i][j] /= batchSize;
+                }
+            }
+            for (let i = 0; i < grad.b.length; i++) {
+                grad.b[i] /= batchSize;
+            }
+        }
+
+        // Clip by global norm
+        const totalNorm = this.getGradientNorm(allGrads);
         const clipCoef = Math.min(1.0, maxGradNorm / (totalNorm + 1e-10));
 
         if (clipCoef < 1.0) {
-            this.scaleGradients([...layerGrads, actorGrad, criticGrad], clipCoef);
+            this.scaleGradients(allGrads, clipCoef);
         }
 
-        // Update weights with Adam
-        const batchSize = trajectory.length;
+        // Update weights
         for (let i = 0; i < this.layers.length; i++) {
-            const scaledWGrad = layerGrads[i].w.map(row => {
-                const scaled = new Float32Array(row.length);
-                for (let j = 0; j < row.length; j++) {
-                    scaled[j] = row[j] / batchSize;
-                }
-                return scaled;
-            });
-            const scaledBGrad = new Float32Array(layerGrads[i].b.length);
-            for (let j = 0; j < layerGrads[i].b.length; j++) {
-                scaledBGrad[j] = layerGrads[i].b[j] / batchSize;
-            }
-            this.optimizers.layers[i].w.update(this.layers[i].w, scaledWGrad);
-            this.optimizers.layers[i].b.update(this.layers[i].b, scaledBGrad);
+            this.optimizers.layers[i].w.update(this.layers[i].w, layerGrads[i].w);
+            this.optimizers.layers[i].b.update(this.layers[i].b, layerGrads[i].b);
         }
 
-        const scaledActorWGrad = actorGrad.w.map(row => {
-            const scaled = new Float32Array(row.length);
-            for (let j = 0; j < row.length; j++) {
-                scaled[j] = row[j] / batchSize;
-            }
-            return scaled;
-        });
-        const scaledActorBGrad = new Float32Array(actorGrad.b.length);
-        for (let j = 0; j < actorGrad.b.length; j++) {
-            scaledActorBGrad[j] = actorGrad.b[j] / batchSize;
-        }
-        this.optimizers.actor.w.update(this.actorHead.w, scaledActorWGrad);
-        this.optimizers.actor.b.update(this.actorHead.b, scaledActorBGrad);
+        this.optimizers.actor.w.update(this.actorHead.w, actorGrad.w);
+        this.optimizers.actor.b.update(this.actorHead.b, actorGrad.b);
 
-        const scaledCriticWGrad = criticGrad.w.map(row => {
-            const scaled = new Float32Array(row.length);
-            for (let j = 0; j < row.length; j++) {
-                scaled[j] = row[j] / batchSize;
-            }
-            return scaled;
-        });
-        const scaledCriticBGrad = new Float32Array(criticGrad.b.length);
-        for (let j = 0; j < criticGrad.b.length; j++) {
-            scaledCriticBGrad[j] = criticGrad.b[j] / batchSize;
-        }
-        this.optimizers.critic.w.update(this.criticHead.w, scaledCriticWGrad);
-        this.optimizers.critic.b.update(this.criticHead.b, scaledCriticBGrad);
+        this.optimizers.critic.w.update(this.criticHead.w, criticGrad.w);
+        this.optimizers.critic.b.update(this.criticHead.b, criticGrad.b);
 
         return {
-            avgAdvantage: advantages.reduce((a, b) => a + b, 0) / advantages.length,
-            avgReturn: returns.reduce((a, b) => a + b, 0) / returns.length,
+            avgAdvantage: advMean,
+            avgReturn: allReturns.reduce((a, b) => a + b, 0) / allReturns.length,
             gradNorm: totalNorm,
             actorLoss: totalActorLoss / batchSize,
             criticLoss: totalCriticLoss / batchSize
