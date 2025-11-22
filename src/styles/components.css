@@ -3,18 +3,20 @@
 /* Canvas Elements */
 #cartpole-canvas {
     width: 100%;
-    height: 300px;
+    height: 350px;
     background: linear-gradient(to bottom, #e3f2fd 0%, #fff 100%);
     border-radius: 8px;
     border: 2px solid #667eea;
+    display: block;
 }
 
 #network-svg {
     width: 100%;
-    height: 300px;
+    height: 400px;
     background: white;
     border-radius: 8px;
     border: 2px solid #667eea;
+    display: block;
 }
 
 #training-chart {
@@ -167,9 +169,10 @@ button.secondary {
 /* Action Bars */
 .action-bars {
     display: flex;
-    gap: 12px;
-    margin-top: 12px;
-    height: 80px;
+    gap: 20px;
+    margin-top: 16px;
+    height: 70px;
+    max-width: 500px;
 }
 
 .action-bar {
@@ -269,9 +272,10 @@ button.secondary {
 /* Training Statistics */
 .training-stats {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin-top: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+    max-width: 100%;
 }
 
 .training-stat {
@@ -798,4 +802,122 @@ button.secondary {
     .perception-input-value {
         font-size: 12px;
     }
+}
+
+/* Network Visualizer Enhanced Styles */
+
+/* Connection styling */
+.network-connection {
+    transition: stroke-opacity 0.2s ease, stroke-width 0.2s ease;
+    cursor: pointer;
+}
+
+.network-connection:hover {
+    stroke-opacity: 0.6 !important;
+    stroke-width: 2 !important;
+    filter: drop-shadow(0 0 3px rgba(102, 126, 234, 0.5));
+}
+
+/* Node styling */
+.network-node {
+    transition: fill-opacity 0.2s ease, r 0.2s ease, filter 0.2s ease;
+    cursor: pointer;
+}
+
+.network-node:hover {
+    fill-opacity: 1 !important;
+    filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.4));
+}
+
+.network-node-input {
+    filter: drop-shadow(0 0 2px rgba(227, 242, 253, 0.5));
+}
+
+.network-node-hidden {
+    filter: drop-shadow(0 0 2px rgba(243, 229, 245, 0.5));
+}
+
+.network-node-actor {
+    filter: drop-shadow(0 0 2px rgba(76, 175, 80, 0.3));
+}
+
+.network-node-critic {
+    filter: drop-shadow(0 0 2px rgba(33, 150, 243, 0.3));
+}
+
+/* Label styling */
+.network-label {
+    transition: font-size 0.2s ease, fill 0.2s ease;
+    cursor: pointer;
+    user-select: none;
+}
+
+.network-label:hover {
+    font-size: 13px;
+    filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.3));
+}
+
+/* Tooltip styling */
+.network-tooltip {
+    pointer-events: none;
+}
+
+.network-tooltip rect {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.network-tooltip text {
+    font-weight: bold;
+}
+
+/* Animation for activation flow */
+@keyframes pulse {
+    0% {
+        fill-opacity: 0.3;
+    }
+    50% {
+        fill-opacity: 0.9;
+    }
+    100% {
+        fill-opacity: 0.3;
+    }
+}
+
+@keyframes flow-animation {
+    0% {
+        stroke-opacity: 0.1;
+    }
+    50% {
+        stroke-opacity: 0.5;
+    }
+    100% {
+        stroke-opacity: 0.1;
+    }
+}
+
+.network-node.active {
+    animation: pulse 0.8s ease-in-out;
+}
+
+.network-connection.active {
+    animation: flow-animation 0.6s ease-in-out;
+}
+
+/* Activation intensity indicator */
+.network-node.high-activation {
+    stroke-width: 3 !important;
+}
+
+.network-node.medium-activation {
+    stroke-width: 2.5 !important;
+}
+
+.network-node.low-activation {
+    stroke-width: 2 !important;
+}
+
+/* Layer zone overlay on hover */
+#layer-zones rect:hover {
+    opacity: 0.5 !important;
+    transition: opacity 0.2s ease;
 }
