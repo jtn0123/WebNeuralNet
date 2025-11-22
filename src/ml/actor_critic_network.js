@@ -206,8 +206,8 @@ export class ActorCriticNetwork {
         return count > 0 ? sum / count : 0;
     }
 
-    // Actor-Critic update with GAE (Generalized Advantage Estimation) and Batch Processing
-    update(trajectories, gamma, entropyCoef = 0.01, valueCoef = 0.1, maxGradNorm = 1.0, gae_lambda = 0.95) {
+    // Actor-Critic update with PPO-Clip and GAE
+    update(trajectories, gamma, entropyCoef = 0.01, valueCoef = 0.1, maxGradNorm = 1.0, gae_lambda = 0.95, epochs = 4) {
         // Handle single trajectory case for backward compatibility
         if (!Array.isArray(trajectories[0])) {
             trajectories = [trajectories];
@@ -225,7 +225,7 @@ export class ActorCriticNetwork {
         for (const trajectory of trajectories) {
             const values = [];
             
-            // Forward pass to get values
+            // Forward pass to get values (Value function target calculation)
             for (let i = 0; i < trajectory.length; i++) {
                 const { value } = this.forward(trajectory[i].state);
                 values.push(value);
@@ -257,126 +257,174 @@ export class ActorCriticNetwork {
             allReturns.push(...trajectoryReturns);
         }
 
-        // 2. Normalize advantages across the entire batch
+        // 2. Normalize advantages across the entire batch (Critical for PPO)
         const advMean = allAdvantages.reduce((a, b) => a + b, 0) / allAdvantages.length;
         const advStd = Math.sqrt(allAdvantages.reduce((a, b) => a + (b - advMean) ** 2, 0) / allAdvantages.length);
         const normalizedAdv = allAdvantages.map(a => (a - advMean) / Math.max(advStd, 1e-8));
 
-        // Initialize gradient accumulators
-        const layerGrads = this.layers.map(layer => ({
-            w: layer.w.map(row => new Float32Array(row.length)),
-            b: new Float32Array(layer.b.length)
-        }));
-
-        const actorGrad = {
-            w: this.actorHead.w.map(row => new Float32Array(row.length)),
-            b: new Float32Array(this.actorHead.b.length)
-        };
-
-        const criticGrad = {
-            w: this.criticHead.w.map(row => new Float32Array(row.length)),
-            b: new Float32Array(this.criticHead.b.length)
-        };
-
-        // 3. Accumulate gradients
-        for (let i = 0; i < flatTrajectory.length; i++) {
-            const { state, action } = flatTrajectory[i];
-            const advantage = normalizedAdv[i];
-            const returnValue = allReturns[i];
-            const value = allValues[i]; // Use stored value to avoid re-forwarding (optional optimization, but safer to re-forward if graph is complex, here it's fine to re-use or re-compute. Let's re-compute to be safe with state)
-            
-            // Re-forward to ensure we have the correct internal state for backprop if needed
-            // In this simple implementation, 'forward' sets 'lastHidden' etc. needed for backprop.
-            // So we MUST call forward again before backprop for THIS specific sample.
-            const { policy } = this.forward(state);
-
-            // Actor loss: -log(π(a|s)) * A(s,a) - H(π(s)) * entropy_coef
-            const actionProb = policy[action];
-            const logProb = Math.log(actionProb + 1e-10);
-            let entropy = 0;
-            for (const p of policy) {
-                if (p > 0) entropy -= p * Math.log(p);
-            }
-            const actorLoss = -logProb * advantage - entropyCoef * entropy;
-            totalActorLoss += actorLoss;
-
-            // Critic loss: Huber Loss
-            const diff = value - returnValue;
-            const absDiff = Math.abs(diff);
-            const huberDelta = 1.0;
-            let sampleCriticLoss, gradFactor;
-
-            if (absDiff <= huberDelta) {
-                sampleCriticLoss = 0.5 * diff * diff;
-                gradFactor = diff;
-            } else {
-                sampleCriticLoss = huberDelta * (absDiff - 0.5 * huberDelta);
-                gradFactor = huberDelta * Math.sign(diff);
-            }
-            
-            totalCriticLoss += valueCoef * sampleCriticLoss;
-
-            // Actor gradients
-            const actorOutputGrad = new Float32Array(policy);
-            actorOutputGrad[action] -= 1;
-            for (let j = 0; j < this.outputSize; j++) {
-                actorOutputGrad[j] *= advantage;
-                const p = policy[j];
-                if (p > 1e-10) {
-                    actorOutputGrad[j] -= entropyCoef * 0.5 * (Math.log(p) + 1) * p;
-                }
-            }
-
-            // Critic gradients (derived from Huber Loss)
-            const criticOutputGrad = new Float32Array(1);
-            criticOutputGrad[0] = valueCoef * gradFactor;
-
-            // Backprop
-            this.backprop(state, actorOutputGrad, criticOutputGrad, layerGrads, actorGrad, criticGrad);
-        }
-
-        // 4. Average and Clip Gradients
         const batchSize = flatTrajectory.length;
-        const allGrads = [...layerGrads, actorGrad, criticGrad];
+        const ppoEpsilon = 0.2; // PPO clip parameter
 
-        // Scale by 1/batchSize
-        for (const grad of allGrads) {
-            for (let i = 0; i < grad.w.length; i++) {
-                for (let j = 0; j < grad.w[i].length; j++) {
-                    grad.w[i][j] /= batchSize;
+        // PPO Loop: Multiple epochs over the same batch
+        for (let epoch = 0; epoch < epochs; epoch++) {
+            
+            // Initialize gradient accumulators for this epoch
+            const layerGrads = this.layers.map(layer => ({
+                w: layer.w.map(row => new Float32Array(row.length)),
+                b: new Float32Array(layer.b.length)
+            }));
+
+            const actorGrad = {
+                w: this.actorHead.w.map(row => new Float32Array(row.length)),
+                b: new Float32Array(this.actorHead.b.length)
+            };
+
+            const criticGrad = {
+                w: this.criticHead.w.map(row => new Float32Array(row.length)),
+                b: new Float32Array(this.criticHead.b.length)
+            };
+
+            let epochActorLoss = 0;
+            let epochCriticLoss = 0;
+
+            // Iterate through all samples in batch
+            for (let i = 0; i < flatTrajectory.length; i++) {
+                const { state, action, prob: oldProb } = flatTrajectory[i];
+                const advantage = normalizedAdv[i];
+                const returnValue = allReturns[i];
+                const value = allValues[i]; // Using fixed targets for stability within epochs
+                
+                // Re-forward to get CURRENT policy probabilities
+                const { policy, value: currentValue } = this.forward(state);
+                const newProb = policy[action];
+
+                // Calculate Ratio: r(theta) = pi_new / pi_old
+                // Handle minimal probability to avoid NaN
+                const ratio = newProb / Math.max(oldProb || 1.0 / this.outputSize, 1e-10);
+
+                // PPO Actor Loss
+                // L^CLIP = min(r*A, clip(r, 1-e, 1+e)*A)
+                
+                const unclippedObj = ratio * advantage;
+                const clippedRatio = Math.max(1 - ppoEpsilon, Math.min(1 + ppoEpsilon, ratio));
+                const clippedObj = clippedRatio * advantage;
+                
+                // We minimize Negative Loss, so maximizing Objective
+                // Loss = -min(unclipped, clipped)
+                
+                // Calculate Entropy
+                let entropy = 0;
+                for (const p of policy) {
+                    if (p > 0) entropy -= p * Math.log(p);
+                }
+
+                // Total Actor Loss for Stats
+                const actorLoss = -Math.min(unclippedObj, clippedObj) - entropyCoef * entropy;
+                epochActorLoss += actorLoss;
+
+                // PPO Gradient Calculation
+                // If clipped term is smaller, gradient is 0 (unless we are moving back towards range).
+                // Ideally: gradient is A * r * (1/newProb) * grad(newProb) IF not clipped.
+                // Gradient w.r.t LOGITS (z):
+                // dL/dz = - A * r * (1 - p_new) if action=target
+                // dL/dz = A * r * p_new if action!=target
+                // This simplifies to: grad_input = - A * ratio * (onehot - p_new)
+
+                // Check if we should update (unclipped or improving)
+                let ppoGradFactor = 0;
+
+                if (unclippedObj <= clippedObj) {
+                    // Unclipped region: normal gradient scaled by ratio
+                    ppoGradFactor = ratio;
+                } else {
+                    // Clipped region: gradient is zero
+                     ppoGradFactor = 0;
+                }
+
+                const actorOutputGrad = new Float32Array(policy);
+
+                // Standard PG Logic adjusted for PPO:
+                // Standard: (p - 1) * A
+                // PPO: (p - 1) * A * ratio
+
+                actorOutputGrad[action] -= 1;
+                for (let j = 0; j < this.outputSize; j++) {
+                    actorOutputGrad[j] *= advantage * ppoGradFactor; // Apply ratio scale if unclipped
+
+                    // Add entropy gradient (scaled by actual entropy, not constant)
+                    const p = policy[j];
+                    if (p > 1e-10) {
+                        actorOutputGrad[j] -= entropyCoef * (Math.log(p + 1e-10) + entropy) * p;
+                    }
+                }
+
+
+                // Critic Loss: Huber Loss
+                // Using currentValue from this forward pass for gradients
+                const diff = currentValue - returnValue;
+                const absDiff = Math.abs(diff);
+                const huberDelta = 1.0;
+                let gradFactor;
+
+                if (absDiff <= huberDelta) {
+                    epochCriticLoss += 0.5 * diff * diff;
+                    gradFactor = diff;
+                } else {
+                    epochCriticLoss += huberDelta * (absDiff - 0.5 * huberDelta);
+                    gradFactor = huberDelta * Math.sign(diff);
+                }
+                
+                // Critic gradients
+                const criticOutputGrad = new Float32Array(1);
+                criticOutputGrad[0] = valueCoef * gradFactor;
+
+                // Backprop
+                this.backprop(state, actorOutputGrad, criticOutputGrad, layerGrads, actorGrad, criticGrad);
+            }
+            
+            // Average gradients
+            const allGrads = [...layerGrads, actorGrad, criticGrad];
+            for (const grad of allGrads) {
+                for (let i = 0; i < grad.w.length; i++) {
+                    for (let j = 0; j < grad.w[i].length; j++) {
+                        grad.w[i][j] /= batchSize;
+                    }
+                }
+                for (let i = 0; i < grad.b.length; i++) {
+                    grad.b[i] /= batchSize;
                 }
             }
-            for (let i = 0; i < grad.b.length; i++) {
-                grad.b[i] /= batchSize;
+
+            // Clip gradients
+            const totalNorm = this.getGradientNorm(allGrads);
+            const clipCoef = Math.min(1.0, maxGradNorm / (totalNorm + 1e-10));
+            if (clipCoef < 1.0) {
+                this.scaleGradients(allGrads, clipCoef);
+            }
+
+            // Apply updates
+            for (let i = 0; i < this.layers.length; i++) {
+                this.optimizers.layers[i].w.update(this.layers[i].w, layerGrads[i].w);
+                this.optimizers.layers[i].b.update(this.layers[i].b, layerGrads[i].b);
+            }
+            this.optimizers.actor.w.update(this.actorHead.w, actorGrad.w);
+            this.optimizers.actor.b.update(this.actorHead.b, actorGrad.b);
+            this.optimizers.critic.w.update(this.criticHead.w, criticGrad.w);
+            this.optimizers.critic.b.update(this.criticHead.b, criticGrad.b);
+
+            // Keep stats for last epoch
+            if (epoch === epochs - 1) {
+                 totalActorLoss = epochActorLoss / batchSize;
+                 totalCriticLoss = epochCriticLoss / batchSize;
             }
         }
-
-        // Clip by global norm
-        const totalNorm = this.getGradientNorm(allGrads);
-        const clipCoef = Math.min(1.0, maxGradNorm / (totalNorm + 1e-10));
-
-        if (clipCoef < 1.0) {
-            this.scaleGradients(allGrads, clipCoef);
-        }
-
-        // Update weights
-        for (let i = 0; i < this.layers.length; i++) {
-            this.optimizers.layers[i].w.update(this.layers[i].w, layerGrads[i].w);
-            this.optimizers.layers[i].b.update(this.layers[i].b, layerGrads[i].b);
-        }
-
-        this.optimizers.actor.w.update(this.actorHead.w, actorGrad.w);
-        this.optimizers.actor.b.update(this.actorHead.b, actorGrad.b);
-
-        this.optimizers.critic.w.update(this.criticHead.w, criticGrad.w);
-        this.optimizers.critic.b.update(this.criticHead.b, criticGrad.b);
 
         return {
             avgAdvantage: advMean,
             avgReturn: allReturns.reduce((a, b) => a + b, 0) / allReturns.length,
-            gradNorm: totalNorm,
-            actorLoss: totalActorLoss / batchSize,
-            criticLoss: totalCriticLoss / batchSize
+            gradNorm: 0, // Not meaningful over multiple epochs/batches usually, or use last
+            actorLoss: totalActorLoss,
+            criticLoss: totalCriticLoss
         };
     }
 

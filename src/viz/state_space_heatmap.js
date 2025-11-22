@@ -83,7 +83,7 @@ export class StateSpaceHeatmap {
                 }
 
                 ctx.fillStyle = color;
-                ctx.fillRect(padding + i * cellWidth, j * cellHeight, cellWidth, cellHeight);
+                ctx.fillRect(padding + i * cellWidth, padding + j * cellHeight, cellWidth, cellHeight);
             }
         }
 

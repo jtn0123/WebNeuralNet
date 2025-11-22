@@ -115,7 +115,13 @@ export class RLSandbox {
         document.getElementById('preset-exploration').addEventListener('click', () => this.applyPreset('exploration'));
         document.getElementById('preset-production').addEventListener('click', () => this.applyPreset('production'));
 
-        document.getElementById('hidden-size').addEventListener('change', () => {
+        document.getElementById('hidden-size').addEventListener('change', (e) => {
+            const size = parseInt(e.target.value);
+            if (size < 16 || size > 256 || size % 8 !== 0) {
+                Toast.error('Hidden layer size must be between 16 and 256 (multiples of 8)');
+                e.target.value = '32';
+                return;
+            }
             if (!this.isTraining && !this.isManual) {
                 this.initNetwork();
             }
@@ -149,15 +155,6 @@ export class RLSandbox {
             if (gamma < 0.9 || gamma > 1.0) {
                 Toast.error('Discount factor must be between 0.9 and 1.0');
                 e.target.value = '0.99';
-                return;
-            }
-        });
-
-        document.getElementById('hidden-size').addEventListener('change', (e) => {
-            const size = parseInt(e.target.value);
-            if (size < 16 || size > 256 || size % 8 !== 0) {
-                Toast.error('Hidden layer size must be between 16 and 256 (multiples of 8)');
-                e.target.value = '32';
                 return;
             }
         });
@@ -256,7 +253,9 @@ export class RLSandbox {
             btn.textContent = 'Stop Manual';
             btn.className = 'secondary';
             hint.style.display = 'block';
-            touchControls.style.display = 'flex';
+            if (touchControls) {
+                touchControls.style.display = 'flex';
+            }
             this.setMode('MANUAL');
             this.env.reset();
             log('Manual control enabled - use arrow keys, A/D, or touch buttons');
@@ -265,7 +264,9 @@ export class RLSandbox {
             btn.textContent = 'Manual Control';
             btn.className = 'secondary';
             hint.style.display = 'none';
-            touchControls.style.display = 'none';
+            if (touchControls) {
+                touchControls.style.display = 'none';
+            }
             this.setMode('IDLE');
             log('Manual control disabled');
         }
@@ -427,7 +428,7 @@ export class RLSandbox {
                 const decayedLR = this.initialLearningRate * Math.pow(0.9995, this.episode);
                 this.network.setLearningRate(decayedLR);
 
-                const updateMetrics = this.network.update(this.batchBuffer, gamma, entropyCoef, 1.0, 2.0, this.gaeLambda);
+                const updateMetrics = this.network.update(this.batchBuffer, gamma, entropyCoef, 0.1, 2.0, this.gaeLambda);
 
                 // Store training diagnostics
                 this.lastGradNorm = updateMetrics.gradNorm;
@@ -723,7 +724,8 @@ export class RLSandbox {
                 discount: parseFloat(document.getElementById('discount').value),
                 entropy: parseFloat(document.getElementById('entropy-coef').value),
                 hiddenSize: parseInt(document.getElementById('hidden-size').value),
-                networkDepth: parseInt(document.getElementById('network-depth').value)
+                networkDepth: parseInt(document.getElementById('network-depth').value),
+                gaeLambda: this.gaeLambda
             }
         };
 
@@ -761,6 +763,11 @@ export class RLSandbox {
                         document.getElementById('entropy-coef').value = data.hyperparameters.entropy;
                         document.getElementById('hidden-size').value = data.hyperparameters.hiddenSize;
                         document.getElementById('network-depth').value = data.hyperparameters.networkDepth;
+                        if (data.hyperparameters.gaeLambda !== undefined) {
+                            this.gaeLambda = data.hyperparameters.gaeLambda;
+                            document.getElementById('gae-lambda').value = data.hyperparameters.gaeLambda;
+                            document.getElementById('gae-lambda-value').textContent = data.hyperparameters.gaeLambda.toFixed(2);
+                        }
                     }
 
                     // Reinitialize network with saved config
@@ -826,7 +833,8 @@ export class RLSandbox {
                 entropy: 0.02,
                 hidden: 32,
                 depth: 1,
-                speed: 8
+                speed: 8,
+                gaeLambda: 0.95
             },
             deep: {
                 lr: 0.003,
@@ -834,7 +842,8 @@ export class RLSandbox {
                 entropy: 0.015,
                 hidden: 64,
                 depth: 2,
-                speed: 1
+                speed: 1,
+                gaeLambda: 0.95
             },
             exploration: {
                 lr: 0.002,
@@ -842,7 +851,8 @@ export class RLSandbox {
                 entropy: 0.05,
                 hidden: 32,
                 depth: 1,
-                speed: 3
+                speed: 3,
+                gaeLambda: 0.95
             },
             production: {
                 lr: 0.001,
@@ -850,7 +860,8 @@ export class RLSandbox {
                 entropy: 0.01,
                 hidden: 128,
                 depth: 2,
-                speed: 1
+                speed: 1,
+                gaeLambda: 0.95
             }
         };
 
@@ -868,6 +879,9 @@ export class RLSandbox {
         document.getElementById('network-depth').value = config.depth;
         this.trainingSpeed = config.speed;
         document.getElementById('training-speed').value = config.speed;
+        this.gaeLambda = config.gaeLambda;
+        document.getElementById('gae-lambda').value = config.gaeLambda;
+        document.getElementById('gae-lambda-value').textContent = config.gaeLambda.toFixed(2);
 
         // Reinitialize with new config
         this.initNetwork();
