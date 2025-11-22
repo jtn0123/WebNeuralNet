@@ -383,12 +383,12 @@ export class NetworkVisualizer {
 
         if (layer.type === 'input') {
             weights = network.layers[0].w.flat();
-        } else if (layer.type === 'hidden' && layerIdx < network.layers.length) {
-            if (layerIdx === network.layers.length) {
+        } else if (layer.type === 'hidden') {
+            if (layer.layerIdx === network.hiddenSizes.length - 1) {
                 // Last hidden layer
                 weights = network.actorHead.w.flat().concat(network.criticHead.w.flat());
             } else {
-                weights = network.layers[layerIdx].w.flat();
+                weights = network.layers[layer.layerIdx + 1].w.flat();
             }
         } else if (layer.type === 'actor') {
             weights = network.actorHead.w.flat();
@@ -438,7 +438,7 @@ export class NetworkVisualizer {
         const nodeGroup = this.svg.querySelector('#nodes');
         const connGroup = this.svg.querySelector('#connections');
 
-        if (!nodeGroup) return;
+        if (!nodeGroup || !connGroup) return;
 
         const nodes = Array.from(nodeGroup.querySelectorAll('circle'));
         const conns = Array.from(connGroup.querySelectorAll('path'));
