@@ -1231,7 +1231,8 @@ html_v3 = r"""<!DOCTYPE html>
 
         // Helper function to create zero-initialized Float32Array
         function createZeroFloat32Array(shape) {
-            if (Array.isArray(shape[0])) {
+            // Check if shape[0] is array-like (either regular array or Float32Array)
+            if (shape[0] && typeof shape[0].length === 'number') {
                 // 2D matrix: array of Float32Array
                 return shape.map(row => new Float32Array(row.length));
             }
@@ -3251,7 +3252,7 @@ html_v3 = r"""<!DOCTYPE html>
                             b: this.network.criticHead.b
                         },
                         hiddenSizes: this.network.hiddenSizes,
-                        activation: this.network.activationType
+                        activation: this.network.activation
                     },
                     hyperparameters: {
                         learningRate: parseFloat(document.getElementById('learning-rate').value),
@@ -3300,6 +3301,11 @@ html_v3 = r"""<!DOCTYPE html>
 
                             // Reinitialize network with saved config
                             this.initNetwork();
+
+                            // Restore activation function from saved data
+                            if (data.network && data.network.activation) {
+                                this.network.activation = data.network.activation;
+                            }
 
                             // Restore weights
                             if (data.network && data.network.layers) {
