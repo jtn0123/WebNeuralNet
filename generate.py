@@ -1229,6 +1229,16 @@ html_v3 = r"""<!DOCTYPE html>
             SURVIVAL_HISTORY_WINDOW: 10
         };
 
+        // Helper function to create zero-initialized Float32Array
+        function createZeroFloat32Array(shape) {
+            if (Array.isArray(shape[0])) {
+                // 2D matrix: array of Float32Array
+                return shape.map(row => new Float32Array(row.length));
+            }
+            // 1D vector: Float32Array
+            return new Float32Array(shape.length);
+        }
+
         // Adam Optimizer
         class AdamOptimizer {
             constructor(shape, learningRate = 0.001, beta1 = 0.9, beta2 = 0.999, epsilon = 1e-8) {
@@ -1238,16 +1248,9 @@ html_v3 = r"""<!DOCTYPE html>
                 this.epsilon = epsilon;
                 this.t = 0;
 
-                // Initialize moments
-                this.m = this.createZeroArray(shape);
-                this.v = this.createZeroArray(shape);
-            }
-
-            createZeroArray(shape) {
-                if (Array.isArray(shape[0])) {
-                    return shape.map(row => new Array(row.length).fill(0));
-                }
-                return new Array(shape.length).fill(0);
+                // Initialize moments with Float32Array
+                this.m = createZeroFloat32Array(shape);
+                this.v = createZeroFloat32Array(shape);
             }
 
             update(param, grad) {
@@ -1297,7 +1300,7 @@ html_v3 = r"""<!DOCTYPE html>
                 for (const hiddenSize of this.hiddenSizes) {
                     this.layers.push({
                         w: this.heInitialize(prevSize, hiddenSize),
-                        b: new Array(hiddenSize).fill(0),
+                        b: new Float32Array(hiddenSize),
                         type: 'hidden'
                     });
                     prevSize = hiddenSize;
@@ -1306,13 +1309,13 @@ html_v3 = r"""<!DOCTYPE html>
                 // Actor head (policy)
                 this.actorHead = {
                     w: this.heInitialize(prevSize, outputSize),
-                    b: new Array(outputSize).fill(0)
+                    b: new Float32Array(outputSize)
                 };
 
                 // Critic head (value function)
                 this.criticHead = {
                     w: this.heInitialize(prevSize, 1),
-                    b: [0]
+                    b: new Float32Array(1)
                 };
 
                 // Initialize Adam optimizers
@@ -1347,7 +1350,7 @@ html_v3 = r"""<!DOCTYPE html>
                 const scale = Math.sqrt(6.0 / inputSize);
                 const matrix = [];
                 for (let i = 0; i < inputSize; i++) {
-                    matrix[i] = [];
+                    matrix[i] = new Float32Array(outputSize);
                     for (let j = 0; j < outputSize; j++) {
                         matrix[i][j] = (Math.random() - 0.5) * 2 * scale;
                     }
@@ -1384,13 +1387,21 @@ html_v3 = r"""<!DOCTYPE html>
 
             softmax(arr) {
                 const max = Math.max(...arr);
-                const exps = arr.map(x => Math.exp(x - max));
-                const sum = exps.reduce((a, b) => a + b, 0);
-                return exps.map(x => x / sum);
+                const exps = new Float32Array(arr.length);
+                let sum = 0;
+                for (let i = 0; i < arr.length; i++) {
+                    exps[i] = Math.exp(arr[i] - max);
+                    sum += exps[i];
+                }
+                const result = new Float32Array(arr.length);
+                for (let i = 0; i < arr.length; i++) {
+                    result[i] = exps[i] / sum;
+                }
+                return result;
             }
 
             forward(input) {
-                this.lastInput = [...input];
+                this.lastInput = new Float32Array(input);
                 this.lastHidden = [];
                 this.lastPreActivation = [];
 
@@ -1399,8 +1410,8 @@ html_v3 = r"""<!DOCTYPE html>
                 // Forward through hidden layers
                 for (let layerIdx = 0; layerIdx < this.layers.length; layerIdx++) {
                     const layer = this.layers[layerIdx];
-                    const nextLayer = [];
-                    const preActivations = [];
+                    const nextLayer = new Float32Array(layer.b.length);
+                    const preActivations = new Float32Array(layer.b.length);
 
                     for (let i = 0; i < layer.b.length; i++) {
                         let sum = layer.b[i];
@@ -1411,13 +1422,13 @@ html_v3 = r"""<!DOCTYPE html>
                         nextLayer[i] = this.activate(sum);
                     }
 
-                    this.lastPreActivation.push([...preActivations]);
-                    this.lastHidden.push([...nextLayer]);
+                    this.lastPreActivation.push(new Float32Array(preActivations));
+                    this.lastHidden.push(new Float32Array(nextLayer));
                     current = nextLayer;
                 }
 
                 // Actor output (policy)
-                const actorOutput = [];
+                const actorOutput = new Float32Array(this.outputSize);
                 for (let i = 0; i < this.outputSize; i++) {
                     let sum = this.actorHead.b[i];
                     for (let j = 0; j < current.length; j++) {
@@ -1517,20 +1528,20 @@ html_v3 = r"""<!DOCTYPE html>
                 const advStd = Math.sqrt(advantages.reduce((a, b) => a + (b - advMean) ** 2, 0) / advantages.length);
                 const normalizedAdv = advantages.map(a => (a - advMean) / (advStd + 1e-8));
 
-                // Accumulate gradients
+                // Accumulate gradients with Float32Array
                 const layerGrads = this.layers.map(layer => ({
-                    w: layer.w.map(row => new Array(row.length).fill(0)),
-                    b: new Array(layer.b.length).fill(0)
+                    w: layer.w.map(row => new Float32Array(row.length)),
+                    b: new Float32Array(layer.b.length)
                 }));
 
                 const actorGrad = {
-                    w: this.actorHead.w.map(row => new Array(row.length).fill(0)),
-                    b: new Array(this.actorHead.b.length).fill(0)
+                    w: this.actorHead.w.map(row => new Float32Array(row.length)),
+                    b: new Float32Array(this.actorHead.b.length)
                 };
 
                 const criticGrad = {
-                    w: this.criticHead.w.map(row => new Array(row.length).fill(0)),
-                    b: new Array(this.criticHead.b.length).fill(0)
+                    w: this.criticHead.w.map(row => new Float32Array(row.length)),
+                    b: new Float32Array(this.criticHead.b.length)
                 };
 
                 for (let t = 0; t < trajectory.length; t++) {
@@ -1556,7 +1567,7 @@ html_v3 = r"""<!DOCTYPE html>
                     totalCriticLoss += criticLoss;
 
                     // Actor loss gradients (policy gradient with advantage)
-                    const actorOutputGrad = [...policy];
+                    const actorOutputGrad = new Float32Array(policy);
 
                     actorOutputGrad[action] -= 1;
                     for (let i = 0; i < this.outputSize; i++) {
@@ -1568,7 +1579,8 @@ html_v3 = r"""<!DOCTYPE html>
                     }
 
                     // Critic loss gradients (MSE with returns)
-                    const criticOutputGrad = [2 * valueCoef * (value - returnValue)];
+                    const criticOutputGrad = new Float32Array(1);
+                    criticOutputGrad[0] = 2 * valueCoef * (value - returnValue);
 
                     // Backprop through network
                     this.backprop(state, actorOutputGrad, criticOutputGrad, layerGrads, actorGrad, criticGrad);
@@ -1585,19 +1597,46 @@ html_v3 = r"""<!DOCTYPE html>
                 // Update weights with Adam
                 const batchSize = trajectory.length;
                 for (let i = 0; i < this.layers.length; i++) {
-                    const scaledWGrad = layerGrads[i].w.map(row => row.map(g => g / batchSize));
-                    const scaledBGrad = layerGrads[i].b.map(g => g / batchSize);
+                    const scaledWGrad = layerGrads[i].w.map(row => {
+                        const scaled = new Float32Array(row.length);
+                        for (let j = 0; j < row.length; j++) {
+                            scaled[j] = row[j] / batchSize;
+                        }
+                        return scaled;
+                    });
+                    const scaledBGrad = new Float32Array(layerGrads[i].b.length);
+                    for (let j = 0; j < layerGrads[i].b.length; j++) {
+                        scaledBGrad[j] = layerGrads[i].b[j] / batchSize;
+                    }
                     this.optimizers.layers[i].w.update(this.layers[i].w, scaledWGrad);
                     this.optimizers.layers[i].b.update(this.layers[i].b, scaledBGrad);
                 }
 
-                const scaledActorWGrad = actorGrad.w.map(row => row.map(g => g / batchSize));
-                const scaledActorBGrad = actorGrad.b.map(g => g / batchSize);
+                const scaledActorWGrad = actorGrad.w.map(row => {
+                    const scaled = new Float32Array(row.length);
+                    for (let j = 0; j < row.length; j++) {
+                        scaled[j] = row[j] / batchSize;
+                    }
+                    return scaled;
+                });
+                const scaledActorBGrad = new Float32Array(actorGrad.b.length);
+                for (let j = 0; j < actorGrad.b.length; j++) {
+                    scaledActorBGrad[j] = actorGrad.b[j] / batchSize;
+                }
                 this.optimizers.actor.w.update(this.actorHead.w, scaledActorWGrad);
                 this.optimizers.actor.b.update(this.actorHead.b, scaledActorBGrad);
 
-                const scaledCriticWGrad = criticGrad.w.map(row => row.map(g => g / batchSize));
-                const scaledCriticBGrad = criticGrad.b.map(g => g / batchSize);
+                const scaledCriticWGrad = criticGrad.w.map(row => {
+                    const scaled = new Float32Array(row.length);
+                    for (let j = 0; j < row.length; j++) {
+                        scaled[j] = row[j] / batchSize;
+                    }
+                    return scaled;
+                });
+                const scaledCriticBGrad = new Float32Array(criticGrad.b.length);
+                for (let j = 0; j < criticGrad.b.length; j++) {
+                    scaledCriticBGrad[j] = criticGrad.b[j] / batchSize;
+                }
                 this.optimizers.critic.w.update(this.criticHead.w, scaledCriticWGrad);
                 this.optimizers.critic.b.update(this.criticHead.b, scaledCriticBGrad);
 
@@ -1659,7 +1698,7 @@ html_v3 = r"""<!DOCTYPE html>
                 criticGrad.b[0] += criticOutputGrad[0];
 
                 // Backprop to last hidden layer
-                let currentGrad = new Array(lastHidden.length).fill(0);
+                let currentGrad = new Float32Array(lastHidden.length);
                 for (let i = 0; i < lastHidden.length; i++) {
                     for (let j = 0; j < this.outputSize; j++) {
                         currentGrad[i] += actorOutputGrad[j] * this.actorHead.w[i][j];
@@ -1691,7 +1730,7 @@ html_v3 = r"""<!DOCTYPE html>
 
                     // Propagate gradient to previous layer
                     if (layerIdx > 0) {
-                        const nextGrad = new Array(prevActivation.length).fill(0);
+                        const nextGrad = new Float32Array(prevActivation.length);
                         for (let i = 0; i < prevActivation.length; i++) {
                             for (let j = 0; j < hidden.length; j++) {
                                 nextGrad[i] += currentGrad[j] * layer.w[i][j];
@@ -1725,7 +1764,7 @@ html_v3 = r"""<!DOCTYPE html>
                 const { policy, value } = this.forward(state);
 
                 // Calculate how much each input affects the output
-                const importance = new Array(state.length).fill(0);
+                const importance = new Float32Array(state.length);
 
                 // Use first layer weights as proxy for importance
                 if (this.layers[0]) {
