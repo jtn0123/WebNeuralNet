@@ -362,6 +362,97 @@ html_v3 = r"""<!DOCTYPE html>
             color: #856404;
         }
 
+        .feature-panel {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .feature-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 13px;
+            font-weight: bold;
+            color: #333;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .feature-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .feature-btn {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            color: #333;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .feature-btn:hover {
+            background: #f5f5f5;
+            border-color: #667eea;
+            color: #667eea;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .feature-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .preset-btn {
+            grid-column: span 1;
+        }
+
+        .shortcuts-legend {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .shortcut-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px;
+            background: #f8f8f8;
+            border-radius: 4px;
+        }
+
+        .shortcut-row kbd {
+            background: #333;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 11px;
+            font-weight: bold;
+            min-width: 40px;
+            text-align: center;
+            display: inline-block;
+            border: 1px solid #000;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .shortcut-row span {
+            color: #666;
+            flex: 1;
+        }
+
         .state-bars {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -723,6 +814,41 @@ html_v3 = r"""<!DOCTYPE html>
                 </div>
                 <div id="keyboard-hint" class="keyboard-hint" style="display: none;">
                     Use LEFT/RIGHT arrow keys or A/D to control the cart
+                </div>
+
+                <!-- Network Management Panel -->
+                <div class="feature-panel">
+                    <h3>Network Management</h3>
+                    <div class="feature-buttons">
+                        <button class="feature-btn" id="save-network-btn">💾 Save</button>
+                        <button class="feature-btn" id="load-network-btn">📂 Load</button>
+                        <button class="feature-btn" id="export-data-btn">📊 Export CSV</button>
+                    </div>
+                </div>
+
+                <!-- Quick Presets Panel -->
+                <div class="feature-panel">
+                    <h3>Training Presets</h3>
+                    <div class="feature-buttons">
+                        <button class="feature-btn preset-btn" id="preset-quick">⚡ Quick</button>
+                        <button class="feature-btn preset-btn" id="preset-deep">🧠 Deep</button>
+                        <button class="feature-btn preset-btn" id="preset-exploration">🔍 Explore</button>
+                        <button class="feature-btn preset-btn" id="preset-production">🏭 Prod</button>
+                    </div>
+                </div>
+
+                <!-- Keyboard Shortcuts Legend -->
+                <div class="feature-panel">
+                    <h3>Keyboard Shortcuts</h3>
+                    <div class="shortcuts-legend">
+                        <div class="shortcut-row"><kbd>SPACE</kbd> <span>Train/Pause</span></div>
+                        <div class="shortcut-row"><kbd>T</kbd> <span>Test Policy</span></div>
+                        <div class="shortcut-row"><kbd>R</kbd> <span>Reset</span></div>
+                        <div class="shortcut-row"><kbd>S</kbd> <span>Save Network</span></div>
+                        <div class="shortcut-row"><kbd>L</kbd> <span>Load Network</span></div>
+                        <div class="shortcut-row"><kbd>M</kbd> <span>Manual Control</span></div>
+                        <div class="shortcut-row"><kbd>P</kbd> <span>Pause Training</span></div>
+                    </div>
                 </div>
 
                 <div class="network-perception">
@@ -2456,6 +2582,55 @@ html_v3 = r"""<!DOCTYPE html>
             }
         }
 
+        // Toast notification system
+        class Toast {
+            static show(message, type = 'info', duration = 3000) {
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = message;
+                toast.style.cssText = `
+                    position: fixed;
+                    bottom: 20px;
+                    right: 20px;
+                    background: ${type === 'success' ? '#4caf50' : type === 'error' ? '#f44336' : '#667eea'};
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 6px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                    z-index: 10000;
+                    font-size: 14px;
+                    animation: slideIn 0.3s ease;
+                `;
+                document.body.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.style.animation = 'slideOut 0.3s ease';
+                    setTimeout(() => toast.remove(), 300);
+                }, duration);
+            }
+
+            static success(message) { this.show(message, 'success'); }
+            static error(message) { this.show(message, 'error'); }
+            static info(message) { this.show(message, 'info'); }
+        }
+
+        // Add toast animations to CSS
+        if (!document.querySelector('style[data-toast-animations]')) {
+            const style = document.createElement('style');
+            style.setAttribute('data-toast-animations', 'true');
+            style.textContent = `
+                @keyframes slideIn {
+                    from { transform: translateX(400px); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+                @keyframes slideOut {
+                    from { transform: translateX(0); opacity: 1; }
+                    to { transform: translateX(400px); opacity: 0; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
         // Main application
         class RLSandbox {
             constructor() {
@@ -2496,6 +2671,7 @@ html_v3 = r"""<!DOCTYPE html>
                 this.initNetwork();
                 this.setupControls();
                 this.setupKeyboard();
+                this.setupGlobalKeyboardShortcuts();
                 this.updateMetrics();
                 this.updateActionBars();
                 this.updateStateDisplay();
@@ -2541,6 +2717,17 @@ html_v3 = r"""<!DOCTYPE html>
                 document.getElementById('test-btn').addEventListener('click', () => this.testPolicy());
                 document.getElementById('reset-btn').addEventListener('click', () => this.resetPolicy());
                 document.getElementById('manual-btn').addEventListener('click', () => this.toggleManual());
+
+                // Network Management buttons
+                document.getElementById('save-network-btn').addEventListener('click', () => this.saveNetwork());
+                document.getElementById('load-network-btn').addEventListener('click', () => this.loadNetwork());
+                document.getElementById('export-data-btn').addEventListener('click', () => this.exportTrainingData());
+
+                // Preset buttons
+                document.getElementById('preset-quick').addEventListener('click', () => this.applyPreset('quick'));
+                document.getElementById('preset-deep').addEventListener('click', () => this.applyPreset('deep'));
+                document.getElementById('preset-exploration').addEventListener('click', () => this.applyPreset('exploration'));
+                document.getElementById('preset-production').addEventListener('click', () => this.applyPreset('production'));
 
                 document.getElementById('hidden-size').addEventListener('change', () => {
                     if (!this.isTraining && !this.isManual) {
@@ -3003,6 +3190,232 @@ html_v3 = r"""<!DOCTYPE html>
                     document.getElementById('best-survival').textContent = '0';
                     document.getElementById('avg-survival').textContent = '0';
                 }
+            }
+
+            // Save network weights and configuration
+            saveNetwork() {
+                const data = {
+                    timestamp: new Date().toISOString(),
+                    episode: this.episode,
+                    survivalHistory: this.survivalHistory,
+                    network: {
+                        layers: this.network.layers.map(l => ({
+                            w: l.w,
+                            b: l.b
+                        })),
+                        actorHead: {
+                            w: this.network.actorHead.w,
+                            b: this.network.actorHead.b
+                        },
+                        criticHead: {
+                            w: this.network.criticHead.w,
+                            b: this.network.criticHead.b
+                        },
+                        hiddenSizes: this.network.hiddenSizes,
+                        activation: this.network.activationType
+                    },
+                    hyperparameters: {
+                        learningRate: parseFloat(document.getElementById('learning-rate').value),
+                        discount: parseFloat(document.getElementById('discount').value),
+                        entropy: parseFloat(document.getElementById('entropy-coef').value),
+                        hiddenSize: parseInt(document.getElementById('hidden-size').value),
+                        networkDepth: parseInt(document.getElementById('network-depth').value)
+                    }
+                };
+
+                const json = JSON.stringify(data, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `cartpole-network-${data.timestamp.substring(0, 10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                Toast.success(`Network saved! Trained for ${this.episode} episodes`);
+                log(`Saved network with ${this.episode} episodes of training`);
+            }
+
+            // Load network weights and configuration
+            loadNetwork() {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'application/json';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            const data = JSON.parse(event.target.result);
+
+                            // Restore hyperparameters
+                            if (data.hyperparameters) {
+                                document.getElementById('learning-rate').value = data.hyperparameters.learningRate;
+                                document.getElementById('discount').value = data.hyperparameters.discount;
+                                document.getElementById('entropy-coef').value = data.hyperparameters.entropy;
+                                document.getElementById('hidden-size').value = data.hyperparameters.hiddenSize;
+                                document.getElementById('network-depth').value = data.hyperparameters.networkDepth;
+                            }
+
+                            // Reinitialize network with saved config
+                            this.initNetwork();
+
+                            // Restore weights
+                            if (data.network && data.network.layers) {
+                                for (let i = 0; i < data.network.layers.length; i++) {
+                                    this.network.layers[i].w = data.network.layers[i].w;
+                                    this.network.layers[i].b = data.network.layers[i].b;
+                                }
+                                this.network.actorHead.w = data.network.actorHead.w;
+                                this.network.actorHead.b = data.network.actorHead.b;
+                                this.network.criticHead.w = data.network.criticHead.w;
+                                this.network.criticHead.b = data.network.criticHead.b;
+                            }
+
+                            this.visualizer.visualize(this.network);
+                            Toast.success(`Network loaded! ${data.episode} episodes of training restored`);
+                            log(`Loaded network trained for ${data.episode} episodes`);
+                        } catch (err) {
+                            Toast.error('Failed to load network: ' + err.message);
+                            log('Error loading network: ' + err.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                };
+                input.click();
+            }
+
+            // Export training data as CSV
+            exportTrainingData() {
+                let csv = 'Episode,Survival_Steps,Actor_Loss,Critic_Loss,Exploration_Rate\n';
+
+                for (let i = 0; i < this.survivalHistory.length; i++) {
+                    csv += `${i + 1},${this.survivalHistory[i]},${this.lossChart.actorLosses[i] || 0},${this.lossChart.criticLosses[i] || 0},${this.exploration}\n`;
+                }
+
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `cartpole-training-${new Date().toISOString().substring(0, 10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                Toast.success(`Training data exported (${this.episode} episodes)`);
+                log(`Exported training data: ${this.episode} episodes`);
+            }
+
+            // Apply training preset
+            applyPreset(preset) {
+                const presets = {
+                    quick: {
+                        lr: 0.005,
+                        discount: 0.99,
+                        entropy: 0.02,
+                        hidden: 32,
+                        depth: 1,
+                        speed: 8
+                    },
+                    deep: {
+                        lr: 0.003,
+                        discount: 0.99,
+                        entropy: 0.015,
+                        hidden: 64,
+                        depth: 2,
+                        speed: 1
+                    },
+                    exploration: {
+                        lr: 0.002,
+                        discount: 0.95,
+                        entropy: 0.05,
+                        hidden: 32,
+                        depth: 1,
+                        speed: 3
+                    },
+                    production: {
+                        lr: 0.001,
+                        discount: 0.99,
+                        entropy: 0.01,
+                        hidden: 128,
+                        depth: 2,
+                        speed: 1
+                    }
+                };
+
+                const config = presets[preset];
+                if (!config) {
+                    Toast.error('Unknown preset: ' + preset);
+                    return;
+                }
+
+                // Apply settings
+                document.getElementById('learning-rate').value = config.lr;
+                document.getElementById('discount').value = config.discount;
+                document.getElementById('entropy-coef').value = config.entropy;
+                document.getElementById('hidden-size').value = config.hidden;
+                document.getElementById('network-depth').value = config.depth;
+                this.trainingSpeed = config.speed;
+                document.getElementById('training-speed').value = config.speed;
+
+                // Reinitialize with new config
+                this.initNetwork();
+                this.heatmap.clear();
+                this.lossChart.clear();
+
+                const names = { quick: '⚡ Quick Train', deep: '🧠 Deep Learn', exploration: '🔍 Exploration', production: '🏭 Production' };
+                Toast.success(`Preset loaded: ${names[preset]}`);
+                log(`Applied ${preset} preset`);
+            }
+
+            // Setup keyboard shortcuts
+            setupGlobalKeyboardShortcuts() {
+                document.addEventListener('keydown', (e) => {
+                    // Don't intercept if typing in input
+                    if (document.activeElement.tagName === 'INPUT') return;
+
+                    switch(e.key) {
+                        case ' ':
+                            e.preventDefault();
+                            this.toggleTraining();
+                            break;
+                        case 't':
+                        case 'T':
+                            if (!this.isTraining && !this.isManual) {
+                                this.testPolicy();
+                            }
+                            break;
+                        case 'r':
+                        case 'R':
+                            this.resetPolicy();
+                            break;
+                        case 's':
+                        case 'S':
+                            if (!this.isTraining && !this.isTesting && !this.isManual) {
+                                this.saveNetwork();
+                            }
+                            break;
+                        case 'l':
+                        case 'L':
+                            if (!this.isTraining && !this.isTesting && !this.isManual) {
+                                this.loadNetwork();
+                            }
+                            break;
+                        case 'm':
+                        case 'M':
+                            if (!this.isTraining && !this.isTesting) {
+                                this.toggleManual();
+                            }
+                            break;
+                        case 'p':
+                        case 'P':
+                            if (this.isTraining) {
+                                this.togglePause();
+                            }
+                            break;
+                    }
+                }, { passive: false });
             }
 
             animate() {
