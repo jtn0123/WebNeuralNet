@@ -492,8 +492,13 @@ export class RLSandbox {
 
         if (this.episode % CONSTANTS.LOG_INTERVAL_EPISODES === 0) {
             const avgLast10 = this.survivalHistory.slice(-CONSTANTS.SURVIVAL_HISTORY_WINDOW).reduce((a, b) => a + b, 0) / Math.min(CONSTANTS.SURVIVAL_HISTORY_WINDOW, this.survivalHistory.length);
-            const gradInfo = this.lastGradNorm ? ` |∇|=${this.lastGradNorm.toFixed(2)}` : '';
-            log(`Ep ${this.episode}: Avg=${avgLast10.toFixed(1)} steps, ε=${this.exploration.toFixed(3)}${gradInfo}`);
+            const bestSurvival = this.survivalHistory.length > 0 ? Math.max(...this.survivalHistory) : 0;
+            const decayedLR = this.initialLearningRate * Math.pow(0.9995, this.episode);
+            const entropy = this.network.getEntropy();
+            const valueEstimate = this.network.lastValue !== undefined ? this.network.lastValue : 0;
+
+            // Enhanced logging with all diagnostic metrics
+            log(`Ep ${this.episode}: Steps=${this.env.steps} (Avg=${avgLast10.toFixed(1)}, Best=${bestSurvival}) | ε=${this.exploration.toFixed(3)}, LR=${decayedLR.toExponential(2)} | Loss: A=${this.lastActorLoss.toFixed(3)}, C=${this.lastCriticLoss.toFixed(3)} | H=${entropy.toFixed(3)}, V=${valueEstimate.toFixed(1)} | |∇|=${this.lastGradNorm.toFixed(2)}`);
         }
 
         this.updateNetworkStats();
