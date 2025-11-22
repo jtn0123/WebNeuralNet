@@ -714,6 +714,78 @@ button.secondary {
     }
 }
 
+/* Heatmap Controls */
+.heatmap-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 12px;
+    background: #f9f9f9;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+}
+
+.heatmap-control-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.heatmap-control-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.heatmap-control-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+    white-space: nowrap;
+}
+
+.heatmap-control-group select {
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: white;
+    font-size: 12px;
+    cursor: pointer;
+    min-width: 120px;
+}
+
+.heatmap-control-group input[type="range"] {
+    cursor: pointer;
+}
+
+#heatmap-refresh-btn {
+    padding: 8px 16px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+#update-interval-value {
+    font-weight: bold;
+    color: #667eea;
+}
+
+@media (max-width: 800px) {
+    .heatmap-control-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .heatmap-control-group select {
+        width: 100%;
+    }
+
+    .heatmap-control-group input[type="range"] {
+        width: 100%;
+    }
+}
+
 @media (max-width: 600px) {
     .controls {
         flex-direction: column;

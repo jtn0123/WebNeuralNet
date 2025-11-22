@@ -301,9 +301,47 @@
 
             <div class="panel full-width">
                 <h2>State Space Value Function Heatmap</h2>
-                <canvas id="state-space-heatmap" style="height: 250px;"></canvas>
-                <p style="font-size: 11px; color: #666; margin-top: 8px; text-align: center;">
-                    Blue = Low Value | Green/Yellow = Medium | Red = High Value | Updates every 25 episodes
+                <div class="heatmap-controls">
+                    <div class="heatmap-control-row">
+                        <div class="heatmap-control-group">
+                            <label>X-Axis:</label>
+                            <select id="heatmap-x-dim">
+                                <option value="0">Position (x)</option>
+                                <option value="1">Velocity (ẋ)</option>
+                                <option value="2">Angle (θ)</option>
+                                <option value="3">Ang Velocity (θ̇)</option>
+                            </select>
+                        </div>
+                        <div class="heatmap-control-group">
+                            <label>Y-Axis:</label>
+                            <select id="heatmap-y-dim">
+                                <option value="0">Position (x)</option>
+                                <option value="1">Velocity (ẋ)</option>
+                                <option value="2" selected>Angle (θ)</option>
+                                <option value="3">Ang Velocity (θ̇)</option>
+                            </select>
+                        </div>
+                        <div class="heatmap-control-group">
+                            <label>Resolution:</label>
+                            <select id="heatmap-resolution">
+                                <option value="20">Low (20x20)</option>
+                                <option value="30" selected>Medium (30x30)</option>
+                                <option value="50">High (50x50)</option>
+                                <option value="80">Ultra (80x80)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="heatmap-control-row">
+                        <button id="heatmap-refresh-btn" class="secondary">🔄 Refresh Now</button>
+                        <div class="heatmap-control-group">
+                            <label>Auto-Update: Every <span id="update-interval-value">25</span> episodes</label>
+                            <input type="range" id="heatmap-update-interval" min="5" max="100" step="5" value="25" style="width: 150px;">
+                        </div>
+                    </div>
+                </div>
+                <canvas id="state-space-heatmap" style="height: 300px;"></canvas>
+                <p style="font-size: 10px; color: #666; margin-top: 8px; text-align: center;">
+                    Blue = Low Value | White = Median | Red = High Value | Colors show learned state values (critic network output)
                 </p>
             </div>
         </div>

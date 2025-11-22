@@ -173,6 +173,50 @@ export class RLSandbox {
             document.getElementById('gae-lambda-value').textContent = this.gaeLambda.toFixed(2);
         });
 
+        // Heatmap controls
+        this.heatmapUpdateInterval = 25;
+        document.getElementById('heatmap-x-dim').addEventListener('change', (e) => {
+            const xDim = parseInt(e.target.value);
+            const yDim = parseInt(document.getElementById('heatmap-y-dim').value);
+            if (xDim === yDim) {
+                Toast.error('X and Y dimensions cannot be the same');
+                e.target.value = '0';
+                return;
+            }
+            this.heatmap.setDimensions(xDim, yDim);
+            if (this.heatmap.heatmapData) this.heatmap.draw();
+        });
+
+        document.getElementById('heatmap-y-dim').addEventListener('change', (e) => {
+            const yDim = parseInt(e.target.value);
+            const xDim = parseInt(document.getElementById('heatmap-x-dim').value);
+            if (xDim === yDim) {
+                Toast.error('X and Y dimensions cannot be the same');
+                e.target.value = '2';
+                return;
+            }
+            this.heatmap.setDimensions(xDim, yDim);
+            if (this.heatmap.heatmapData) this.heatmap.draw();
+        });
+
+        document.getElementById('heatmap-resolution').addEventListener('change', (e) => {
+            const size = parseInt(e.target.value);
+            this.heatmap.setGridSize(size);
+            if (this.heatmap.heatmapData) {
+                this.heatmap.computeHeatmap(this.network, this.env);
+            }
+        });
+
+        document.getElementById('heatmap-refresh-btn').addEventListener('click', () => {
+            this.heatmap.computeHeatmap(this.network, this.env);
+            Toast.success('Heatmap refreshed');
+        });
+
+        document.getElementById('heatmap-update-interval').addEventListener('input', (e) => {
+            this.heatmapUpdateInterval = parseInt(e.target.value);
+            document.getElementById('update-interval-value').textContent = this.heatmapUpdateInterval;
+        });
+
         const speedSlider = document.getElementById('training-speed');
         speedSlider.addEventListener('input', (e) => {
             this.trainingSpeed = parseInt(e.target.value);
@@ -451,12 +495,12 @@ export class RLSandbox {
                 this.batchBuffer = [];
             }
 
-            // Update heatmap every 25 episodes
-            if (this.episode % 25 === 0) {
+            // Update heatmap at configurable interval
+            if (this.episode % this.heatmapUpdateInterval === 0) {
                 try {
                     this.heatmap.computeHeatmap(this.network, this.env);
                 } catch (e) {
-                    // Silently fail if heatmap canvas not available
+                    console.error('Heatmap update failed:', e);
                 }
             }
 
