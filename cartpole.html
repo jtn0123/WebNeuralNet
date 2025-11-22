@@ -224,7 +224,8 @@
             left: 0;
             right: 0;
             background: linear-gradient(to top, #667eea, #764ba2);
-            transition: height 0.1s ease;
+            transition: transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform-origin: bottom;
         }
 
         .action-bar-label {
@@ -402,7 +403,7 @@
             position: absolute;
             height: 100%;
             background: linear-gradient(90deg, #667eea, #764ba2);
-            transition: left 0.1s ease, width 0.1s ease;
+            transition: left 0.1s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.1s cubic-bezier(0.34, 1.56, 0.64, 1);
             border-radius: 12px;
         }
 
@@ -612,7 +613,8 @@
             left: 0;
             right: 0;
             background: linear-gradient(to top, #4caf50, #81c784);
-            transition: height 0.2s ease;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform-origin: bottom;
         }
 
         .importance-label {
@@ -712,6 +714,7 @@
                 </div>
                 <div class="controls">
                     <button class="primary" id="train-btn">Start Training</button>
+                    <button class="secondary" id="pause-btn" style="display: none;">Pause</button>
                     <button class="success" id="test-btn">Test Policy</button>
                     <button class="danger" id="reset-btn">Reset Policy</button>
                     <button class="secondary" id="manual-btn">Manual Control</button>
@@ -991,11 +994,65 @@
             logDiv.appendChild(entry);
             logDiv.scrollTop = logDiv.scrollHeight;
 
-            // Keep only last 50 entries
-            while (logDiv.children.length > 50) {
+            // Keep only last entries
+            while (logDiv.children.length > CONSTANTS.LOG_MAX_ENTRIES) {
                 logDiv.removeChild(logDiv.firstChild);
             }
         }
+
+        // Constants for magic numbers
+        const CONSTANTS = {
+            // Log management
+            LOG_MAX_ENTRIES: 50,
+
+            // CartPole physics and thresholds
+            CART_WIDTH: 50,
+            CART_HEIGHT: 30,
+            WHEEL_RADIUS: 8,
+            POLE_TIP_RADIUS: 10,
+            ANGLE_ARC_RADIUS: 30,
+            VELOCITY_SCALE: 20,
+            ARROW_HEAD_SIZE: 8,
+            GROUND_HEIGHT_RATIO: 0.7,
+            TRACK_Y_RATIO: 0.7,
+            CART_Y_RATIO: 0.7,
+
+            // Pole color thresholds (ratio of angle to threshold)
+            POLE_CRITICAL_THRESHOLD: 0.7,
+            POLE_WARNING_THRESHOLD: 0.4,
+            WARNING_DISPLAY_THRESHOLD: 0.7,
+
+            // Reward shaping
+            ANGLE_PENALTY: 0.05,
+            POSITION_PENALTY: 0.001,
+            FAILURE_REWARD: -1.0,
+
+            // Training parameters
+            INITIAL_EXPLORATION: 0.2,
+            EXPLORATION_DECAY: 0.998,
+            MIN_EXPLORATION: 0.05,
+            DEFAULT_TRAINING_SPEED: 5,
+
+            // Network visualization
+            NODE_RADIUS: 7,
+            NODE_SPACING_MIN: 25,
+
+            // Rendering and visualization
+            SVG_UPDATE_FREQUENCY: 3, // Update every N frames
+
+            // History management
+            SURVIVAL_HISTORY_MAX: 100,
+            LOG_INTERVAL_EPISODES: 10,
+
+            // State normalization
+            MAX_X: 2.4,
+            MAX_X_DOT: 4.0,
+            MAX_THETA: 0.21,
+            MAX_THETA_DOT: 4.0,
+
+            // Feedback windows
+            SURVIVAL_HISTORY_WINDOW: 10
+        };
 
         // Adam Optimizer
         class AdamOptimizer {
@@ -1111,7 +1168,8 @@
             }
 
             heInitialize(inputSize, outputSize) {
-                const scale = Math.sqrt(2.0 / inputSize);
+                // He initialization for Uniform distribution: sqrt(6 / n)
+                const scale = Math.sqrt(6.0 / inputSize);
                 const matrix = [];
                 for (let i = 0; i < inputSize; i++) {
                     matrix[i] = [];
@@ -1308,11 +1366,20 @@
 
                     // Actor loss gradients (policy gradient with advantage)
                     const actorOutputGrad = [...policy];
+                    
+                    // Calculate current entropy
+                    let entropy = 0;
+                    for (const p of policy) {
+                        if (p > 0) entropy -= p * Math.log(p);
+                    }
+
                     actorOutputGrad[action] -= 1;
                     for (let i = 0; i < this.outputSize; i++) {
                         actorOutputGrad[i] *= advantage;
-                        // Entropy bonus
-                        actorOutputGrad[i] -= entropyCoef * (Math.log(policy[i] + 1e-10) + 1);
+                        // Entropy bonus: d(beta * H)/dz = beta * p * (log(p) + H)
+                        // We want to ascend, so we subtract negative gradient: - ( - beta * ... )
+                        // Gradient collected is negative of objective gradient.
+                        actorOutputGrad[i] += entropyCoef * policy[i] * (Math.log(policy[i] + 1e-10) + entropy);
                     }
 
                     // Critic loss gradients (MSE with returns)
@@ -1559,6 +1626,9 @@
             constructor(canvasId) {
                 this.canvas = document.getElementById(canvasId);
                 this.ctx = this.canvas.getContext('2d');
+                // Create offscreen canvas for double buffering
+                this.offscreenCanvas = document.createElement('canvas');
+                this.offscreenCtx = this.offscreenCanvas.getContext('2d');
                 this.resize();
                 window.addEventListener('resize', () => this.resize());
             }
@@ -1567,12 +1637,15 @@
                 const rect = this.canvas.getBoundingClientRect();
                 this.canvas.width = rect.width;
                 this.canvas.height = rect.height;
+                // Resize offscreen canvas to match
+                this.offscreenCanvas.width = rect.width;
+                this.offscreenCanvas.height = rect.height;
             }
 
             render(env) {
-                const ctx = this.ctx;
-                const width = this.canvas.width;
-                const height = this.canvas.height;
+                const ctx = this.offscreenCtx;
+                const width = this.offscreenCanvas.width;
+                const height = this.offscreenCanvas.height;
 
                 // Clear
                 ctx.fillStyle = 'rgba(227, 242, 253, 0.5)';
@@ -1580,14 +1653,14 @@
 
                 // Ground
                 ctx.fillStyle = '#8d6e63';
-                ctx.fillRect(0, height * 0.7, width, height * 0.3);
+                ctx.fillRect(0, height * CONSTANTS.GROUND_HEIGHT_RATIO, width, height * (1 - CONSTANTS.GROUND_HEIGHT_RATIO));
 
                 // Track
                 ctx.strokeStyle = '#555';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.moveTo(0, height * 0.7);
-                ctx.lineTo(width, height * 0.7);
+                ctx.moveTo(0, height * CONSTANTS.TRACK_Y_RATIO);
+                ctx.lineTo(width, height * CONSTANTS.TRACK_Y_RATIO);
                 ctx.stroke();
 
                 // Draw boundaries
@@ -1600,19 +1673,19 @@
                 ctx.setLineDash([5, 5]);
                 ctx.beginPath();
                 ctx.moveTo(leftBoundary, height * 0.5);
-                ctx.lineTo(leftBoundary, height * 0.7);
+                ctx.lineTo(leftBoundary, height * CONSTANTS.CART_Y_RATIO);
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.moveTo(rightBoundary, height * 0.5);
-                ctx.lineTo(rightBoundary, height * 0.7);
+                ctx.lineTo(rightBoundary, height * CONSTANTS.CART_Y_RATIO);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
                 // Cart
                 const cartX = width / 2 + env.x * scale;
-                const cartY = height * 0.7;
-                const cartWidth = 50;
-                const cartHeight = 30;
+                const cartY = height * CONSTANTS.CART_Y_RATIO;
+                const cartWidth = CONSTANTS.CART_WIDTH;
+                const cartHeight = CONSTANTS.CART_HEIGHT;
 
                 ctx.fillStyle = '#1976d2';
                 ctx.fillRect(cartX - cartWidth / 2, cartY - cartHeight, cartWidth, cartHeight);
@@ -1620,10 +1693,10 @@
                 // Wheels
                 ctx.fillStyle = '#333';
                 ctx.beginPath();
-                ctx.arc(cartX - cartWidth / 3, cartY, 8, 0, Math.PI * 2);
+                ctx.arc(cartX - cartWidth / 3, cartY, CONSTANTS.WHEEL_RADIUS, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.beginPath();
-                ctx.arc(cartX + cartWidth / 3, cartY, 8, 0, Math.PI * 2);
+                ctx.arc(cartX + cartWidth / 3, cartY, CONSTANTS.WHEEL_RADIUS, 0, Math.PI * 2);
                 ctx.fill();
 
                 // Pole
@@ -1634,9 +1707,9 @@
                 // Pole color based on angle
                 const angleRatio = Math.abs(env.theta) / env.thetaThreshold;
                 let poleColor = '#4caf50'; // green
-                if (angleRatio > 0.7) {
+                if (angleRatio > CONSTANTS.POLE_CRITICAL_THRESHOLD) {
                     poleColor = '#f44336'; // red
-                } else if (angleRatio > 0.4) {
+                } else if (angleRatio > CONSTANTS.POLE_WARNING_THRESHOLD) {
                     poleColor = '#ff9800'; // orange
                 }
 
@@ -1651,7 +1724,7 @@
                 // Pole tip
                 ctx.fillStyle = poleColor;
                 ctx.beginPath();
-                ctx.arc(poleX, poleY, 10, 0, Math.PI * 2);
+                ctx.arc(poleX, poleY, CONSTANTS.POLE_TIP_RADIUS, 0, Math.PI * 2);
                 ctx.fill();
 
                 // Draw angle arc
@@ -1659,7 +1732,7 @@
                 ctx.lineWidth = 2;
                 ctx.globalAlpha = 0.5;
                 ctx.beginPath();
-                ctx.arc(cartX, cartY - cartHeight, 30, -Math.PI / 2, -Math.PI / 2 + env.theta, env.theta > 0);
+                ctx.arc(cartX, cartY - cartHeight, CONSTANTS.ANGLE_ARC_RADIUS, -Math.PI / 2, -Math.PI / 2 + env.theta, env.theta > 0);
                 ctx.stroke();
                 ctx.globalAlpha = 1.0;
 
@@ -1669,7 +1742,7 @@
                     ctx.lineWidth = 4;
                     ctx.beginPath();
                     ctx.moveTo(cartX, cartY - cartHeight / 2);
-                    const velocityScale = 20;
+                    const velocityScale = CONSTANTS.VELOCITY_SCALE;
                     ctx.lineTo(cartX + env.xDot * velocityScale, cartY - cartHeight / 2);
                     ctx.stroke();
 
@@ -1677,10 +1750,10 @@
                     const angle = env.xDot > 0 ? 0 : Math.PI;
                     ctx.beginPath();
                     ctx.moveTo(cartX + env.xDot * velocityScale, cartY - cartHeight / 2);
-                    ctx.lineTo(cartX + env.xDot * velocityScale - Math.cos(angle - Math.PI / 6) * 8,
-                              cartY - cartHeight / 2 - Math.sin(angle - Math.PI / 6) * 8);
-                    ctx.lineTo(cartX + env.xDot * velocityScale - Math.cos(angle + Math.PI / 6) * 8,
-                              cartY - cartHeight / 2 - Math.sin(angle + Math.PI / 6) * 8);
+                    ctx.lineTo(cartX + env.xDot * velocityScale - Math.cos(angle - Math.PI / 6) * CONSTANTS.ARROW_HEAD_SIZE,
+                              cartY - cartHeight / 2 - Math.sin(angle - Math.PI / 6) * CONSTANTS.ARROW_HEAD_SIZE);
+                    ctx.lineTo(cartX + env.xDot * velocityScale - Math.cos(angle + Math.PI / 6) * CONSTANTS.ARROW_HEAD_SIZE,
+                              cartY - cartHeight / 2 - Math.sin(angle + Math.PI / 6) * CONSTANTS.ARROW_HEAD_SIZE);
                     ctx.closePath();
                     ctx.fillStyle = '#2196f3';
                     ctx.fill();
@@ -1693,11 +1766,14 @@
                 ctx.fillText(`x: ${env.x.toFixed(2)}`, 10, 40);
 
                 // Warning indicators
-                if (Math.abs(env.x) > env.xThreshold * 0.7 || Math.abs(env.theta) > env.thetaThreshold * 0.7) {
+                if (Math.abs(env.x) > env.xThreshold * CONSTANTS.WARNING_DISPLAY_THRESHOLD || Math.abs(env.theta) > env.thetaThreshold * CONSTANTS.WARNING_DISPLAY_THRESHOLD) {
                     ctx.fillStyle = '#f44336';
                     ctx.font = 'bold 16px sans-serif';
                     ctx.fillText('⚠️ CRITICAL', width - 120, 30);
                 }
+
+                // Blit offscreen canvas to visible canvas
+                this.ctx.drawImage(this.offscreenCanvas, 0, 0);
             }
         }
 
@@ -2022,14 +2098,16 @@
                 this.isTraining = false;
                 this.isTesting = false;
                 this.isManual = false;
+                this.isPaused = false;
                 this.episode = 0;
                 this.survivalHistory = [];
                 this.currentTrajectory = [];
                 this.manualAction = null;
-                this.trainingSpeed = 5;
-                this.exploration = 0.2; // Start with more exploration
-                this.explorationDecay = 0.998; // Much slower decay
-                this.minExploration = 0.05; // Higher minimum
+                this.trainingSpeed = CONSTANTS.DEFAULT_TRAINING_SPEED;
+                this.exploration = CONSTANTS.INITIAL_EXPLORATION;
+                this.explorationDecay = CONSTANTS.EXPLORATION_DECAY;
+                this.minExploration = CONSTANTS.MIN_EXPLORATION;
+                this.frameCounter = 0; // For SVG update throttling
 
                 // Training diagnostics
                 this.lastGradNorm = 0;
@@ -2054,6 +2132,16 @@
                 log('Gradient norm and advantage metrics show training health');
             }
 
+            normalizeState(state) {
+                // Normalize inputs to roughly [-1, 1] range for better network performance
+                return [
+                    state[0] / CONSTANTS.MAX_X,
+                    state[1] / CONSTANTS.MAX_X_DOT,
+                    state[2] / CONSTANTS.MAX_THETA,
+                    state[3] / CONSTANTS.MAX_THETA_DOT
+                ];
+            }
+
             initNetwork() {
                 const hiddenSize = parseInt(document.getElementById('hidden-size').value);
                 const depth = parseInt(document.getElementById('network-depth').value);
@@ -2070,6 +2158,7 @@
 
             setupControls() {
                 document.getElementById('train-btn').addEventListener('click', () => this.toggleTraining());
+                document.getElementById('pause-btn').addEventListener('click', () => this.togglePause());
                 document.getElementById('test-btn').addEventListener('click', () => this.testPolicy());
                 document.getElementById('reset-btn').addEventListener('click', () => this.resetPolicy());
                 document.getElementById('manual-btn').addEventListener('click', () => this.toggleManual());
@@ -2163,7 +2252,7 @@
 
                         // Show what action the network would take
                         const state = this.env.getState();
-                        this.network.forward(state);
+                        this.network.forward(this.normalizeState(state));
 
                         if (result.done) {
                             log(`Episode ended: survived ${this.env.steps} steps`);
@@ -2190,22 +2279,46 @@
 
                 this.isTraining = !this.isTraining;
                 const btn = document.getElementById('train-btn');
+                const pauseBtn = document.getElementById('pause-btn');
                 if (this.isTraining) {
                     btn.textContent = 'Stop Training';
                     btn.className = 'danger';
+                    pauseBtn.style.display = 'block';
+                    pauseBtn.textContent = 'Pause';
+                    this.isPaused = false;
                     this.setMode('TRAINING');
                     log('Training started');
                     this.trainingLoop();
                 } else {
                     btn.textContent = 'Start Training';
                     btn.className = 'primary';
+                    pauseBtn.style.display = 'none';
+                    this.isPaused = false;
                     this.setMode('IDLE');
                     log('Training stopped');
                 }
             }
 
+            togglePause() {
+                this.isPaused = !this.isPaused;
+                const pauseBtn = document.getElementById('pause-btn');
+                if (this.isPaused) {
+                    pauseBtn.textContent = 'Resume';
+                    log('Training paused - inspect metrics without losing progress');
+                } else {
+                    pauseBtn.textContent = 'Pause';
+                    log('Training resumed');
+                }
+            }
+
             async trainingLoop() {
                 while (this.isTraining) {
+                    // Pause/resume support
+                    if (this.isPaused) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        continue;
+                    }
+
                     await this.runEpisode(true);
 
                     // Adjust delay based on training speed
@@ -2224,10 +2337,13 @@
                 const stepDelay = train ? Math.max(0, 3 - this.trainingSpeed * 0.3) : 20;
 
                 while (!done && (this.isTraining || this.isTesting)) {
+                    // Normalize state for network
+                    const normState = this.normalizeState(state);
+
                     // Use exploration during training
                     const action = train ?
-                        this.network.selectAction(state, this.exploration) :
-                        this.network.selectAction(state, 0);
+                        this.network.selectAction(normState, this.exploration) :
+                        this.network.selectAction(normState, 0);
 
                     const result = this.env.step(action);
 
@@ -2238,18 +2354,18 @@
                         shapedReward = 1.0;
 
                         // Small penalty for large angles (encourage vertical)
-                        shapedReward -= 0.05 * Math.abs(this.env.theta);
+                        shapedReward -= CONSTANTS.ANGLE_PENALTY * Math.abs(this.env.theta);
 
                         // Tiny penalty for being off-center
-                        shapedReward -= 0.001 * Math.abs(this.env.x);
+                        shapedReward -= CONSTANTS.POSITION_PENALTY * Math.abs(this.env.x);
                     } else {
                         // Failure penalty proportional to how early it failed
-                        shapedReward = -1.0;
+                        shapedReward = CONSTANTS.FAILURE_REWARD;
                     }
 
                     totalReward += shapedReward;
                     this.currentTrajectory.push({
-                        state: [...state],
+                        state: [...normState], // Store normalized state
                         action: action,
                         reward: shapedReward
                     });
@@ -2260,7 +2376,11 @@
                     this.updateMetrics();
                     this.updateActionBars();
                     this.updateStateDisplay();
-                    this.visualizer.visualize(this.network);
+
+                    // Throttle SVG updates for better performance
+                    if (this.frameCounter++ % CONSTANTS.SVG_UPDATE_FREQUENCY === 0) {
+                        this.visualizer.visualize(this.network);
+                    }
 
                     await new Promise(resolve => setTimeout(resolve, stepDelay));
                 }
@@ -2281,14 +2401,14 @@
 
                 this.episode++;
                 this.survivalHistory.push(this.env.steps);
-                if (this.survivalHistory.length > 100) {
+                if (this.survivalHistory.length > CONSTANTS.SURVIVAL_HISTORY_MAX) {
                     this.survivalHistory.shift();
                 }
 
                 this.chart.addDataPoint(this.episode, this.env.steps);
 
-                if (this.episode % 10 === 0) {
-                    const avgLast10 = this.survivalHistory.slice(-10).reduce((a, b) => a + b, 0) / Math.min(10, this.survivalHistory.length);
+                if (this.episode % CONSTANTS.LOG_INTERVAL_EPISODES === 0) {
+                    const avgLast10 = this.survivalHistory.slice(-CONSTANTS.SURVIVAL_HISTORY_WINDOW).reduce((a, b) => a + b, 0) / Math.min(CONSTANTS.SURVIVAL_HISTORY_WINDOW, this.survivalHistory.length);
                     const gradInfo = this.lastGradNorm ? ` |∇|=${this.lastGradNorm.toFixed(2)}` : '';
                     log(`Ep ${this.episode}: Avg=${avgLast10.toFixed(1)} steps, ε=${this.exploration.toFixed(3)}${gradInfo}`);
                 }
@@ -2332,7 +2452,7 @@
 
                 this.episode = 0;
                 this.survivalHistory = [];
-                this.exploration = 0.2; // Reset exploration
+                this.exploration = CONSTANTS.INITIAL_EXPLORATION; // Reset exploration
                 this.chart.clear();
                 this.initNetwork();
                 this.env.reset();
@@ -2347,14 +2467,14 @@
                 if (this.network.lastOutput) {
                     const probs = this.network.lastOutput;
 
-                    // Update left action bar
+                    // Update left action bar using CSS transform for better performance
                     const leftPct = (probs[0] * 100).toFixed(1);
-                    document.getElementById('action-left').style.height = leftPct + '%';
+                    document.getElementById('action-left').style.transform = `scaleY(${probs[0]})`;
                     document.getElementById('action-left-val').textContent = leftPct + '%';
 
-                    // Update right action bar
+                    // Update right action bar using CSS transform for better performance
                     const rightPct = (probs[1] * 100).toFixed(1);
-                    document.getElementById('action-right').style.height = rightPct + '%';
+                    document.getElementById('action-right').style.transform = `scaleY(${probs[1]})`;
                     document.getElementById('action-right-val').textContent = rightPct + '%';
                 }
             }
@@ -2365,10 +2485,10 @@
                 const [x, xDot, theta, thetaDot] = state;
 
                 // Define reasonable max values for normalization
-                const maxX = this.env.xThreshold;
-                const maxXDot = 4.0;
-                const maxTheta = this.env.thetaThreshold;
-                const maxThetaDot = 4.0;
+                const maxX = CONSTANTS.MAX_X;
+                const maxXDot = CONSTANTS.MAX_X_DOT;
+                const maxTheta = CONSTANTS.MAX_THETA;
+                const maxThetaDot = CONSTANTS.MAX_THETA_DOT;
 
                 // Update cart position perception
                 const xNorm = Math.min(1, Math.abs(x) / maxX);
@@ -2405,7 +2525,7 @@
                 document.getElementById('thetadot-value').textContent = thetaDot.toFixed(2);
 
                 // Calculate and display input importance
-                const importance = this.network.getInputImportance(state);
+                const importance = this.network.getInputImportance(this.normalizeState(state));
                 const maxImportance = Math.max(...importance, 0.001);
 
                 const importanceX = (importance[0] / maxImportance * 100);
