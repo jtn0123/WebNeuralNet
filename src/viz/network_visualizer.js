@@ -10,6 +10,9 @@ export class NetworkVisualizer {
 
         // Tooltip element for hover interactions
         this.tooltip = null;
+
+        // Store layer sizes for layer animations
+        this.layerSizes = [];
     }
 
     initializeSVG() {
@@ -105,6 +108,9 @@ export class NetworkVisualizer {
         // Add output layers (actor and critic)
         layers.push({ size: network.outputSize, label: 'Actor', type: 'actor' });
         layers.push({ size: 1, label: 'Critic', type: 'critic' });
+
+        // Store layer sizes for layer animations
+        this.layerSizes = layers.map(l => l.size);
 
         // Calculate optimal spacing
         const maxNodes = Math.max(...layers.map(l => l.size));
@@ -417,6 +423,13 @@ export class NetworkVisualizer {
         const nodeGroup = this.svg.querySelector('#nodes');
         if (!nodeGroup) return;
 
+        // Calculate which nodes belong to the target layer
+        let layerStartIdx = 0;
+        for (let i = 0; i < layerIndex; i++) {
+            layerStartIdx += this.layerSizes[i] || 0;
+        }
+        const layerEndIdx = layerStartIdx + (this.layerSizes[layerIndex] || 0);
+
         const nodes = nodeGroup.querySelectorAll('circle');
         let nodeCount = 0;
 
@@ -426,7 +439,8 @@ export class NetworkVisualizer {
             // Trigger reflow to restart animation
             void node.offsetWidth;
 
-            if (nodeCount >= layerIndex && nodeCount < layerIndex + 1) {
+            // Activate all nodes in the target layer
+            if (nodeCount >= layerStartIdx && nodeCount < layerEndIdx) {
                 node.classList.add('active');
             }
             nodeCount++;
