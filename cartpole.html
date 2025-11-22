@@ -1544,7 +1544,7 @@
                     const logProb = Math.log(actionProb + 1e-10);
                     let entropy = 0;
                     for (const p of policy) {
-                        if (p > 0) entropy -= p * Math.log(p);
+                        if (p > 0) entropy += p * Math.log(p);
                     }
                     const actorLoss = -logProb * advantage - entropyCoef * entropy;
                     totalActorLoss += actorLoss;
@@ -3210,7 +3210,7 @@
                             b: this.network.criticHead.b
                         },
                         hiddenSizes: this.network.hiddenSizes,
-                        activation: this.network.activationType
+                        activation: this.network.activation
                     },
                     hyperparameters: {
                         learningRate: parseFloat(document.getElementById('learning-rate').value),
@@ -3255,6 +3255,11 @@
                                 document.getElementById('entropy-coef').value = data.hyperparameters.entropy;
                                 document.getElementById('hidden-size').value = data.hyperparameters.hiddenSize;
                                 document.getElementById('network-depth').value = data.hyperparameters.networkDepth;
+                            }
+
+                            // Restore activation function
+                            if (data.network && data.network.activation) {
+                                document.getElementById('activation-fn').value = data.network.activation;
                             }
 
                             // Reinitialize network with saved config
