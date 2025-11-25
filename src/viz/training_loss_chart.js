@@ -1,4 +1,4 @@
-import { debounce } from '../utils/helpers.js';
+import { debounce, getThemeColors } from '../utils/helpers.js';
 
 // Loss tracking visualization
 export class TrainingLossChart {
@@ -33,9 +33,10 @@ export class TrainingLossChart {
         const width = this.canvas.width;
         const height = this.canvas.height;
         const padding = 40;
+        const colors = getThemeColors();
 
         // Clear
-        ctx.fillStyle = 'white';
+        ctx.fillStyle = colors.background;
         ctx.fillRect(0, 0, width, height);
 
         if (this.actorLosses.length === 0) return;
@@ -46,7 +47,7 @@ export class TrainingLossChart {
         const maxLoss = Math.max(maxActorLoss, maxCriticLoss);
 
         // Draw axes
-        ctx.strokeStyle = '#999';
+        ctx.strokeStyle = colors.textSecondary;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(padding, height - padding);
@@ -58,7 +59,7 @@ export class TrainingLossChart {
         ctx.stroke();
 
         // Draw actor loss line
-        ctx.strokeStyle = '#667eea';
+        ctx.strokeStyle = colors.primary;
         ctx.lineWidth = 2;
         ctx.beginPath();
         for (let i = 0; i < this.actorLosses.length; i++) {
@@ -70,7 +71,7 @@ export class TrainingLossChart {
         ctx.stroke();
 
         // Draw critic loss line
-        ctx.strokeStyle = '#ff9800';
+        ctx.strokeStyle = colors.secondary;
         ctx.lineWidth = 2;
         ctx.beginPath();
         for (let i = 0; i < this.criticLosses.length; i++) {
@@ -82,20 +83,20 @@ export class TrainingLossChart {
         ctx.stroke();
 
         // Labels
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = colors.textPrimary;
         ctx.font = '12px sans-serif';
         ctx.fillText('0', padding - 20, height - padding + 5);
         ctx.fillText(maxLoss.toFixed(2), padding - 35, padding + 5);
 
         // Legend
-        ctx.fillStyle = '#667eea';
+        ctx.fillStyle = colors.primary;
         ctx.fillRect(width - 180, 10, 12, 12);
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = colors.textSecondary;
         ctx.fillText('Actor Loss', width - 160, 20);
 
-        ctx.fillStyle = '#ff9800';
+        ctx.fillStyle = colors.secondary;
         ctx.fillRect(width - 180, 30, 12, 12);
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = colors.textSecondary;
         ctx.fillText('Critic Loss', width - 160, 40);
     }
 

@@ -1,5 +1,5 @@
 import { CONSTANTS } from '../utils/constants.js';
-import { debounce } from '../utils/helpers.js';
+import { debounce, getThemeColors } from '../utils/helpers.js';
 
 // State space heatmap visualization with advanced features
 export class StateSpaceHeatmap {
@@ -153,11 +153,13 @@ export class StateSpaceHeatmap {
     }
 
     draw() {
+        const colors = getThemeColors();
+
         if (!this.heatmapData) {
             const ctx = this.ctx;
-            ctx.fillStyle = '#f5f5f5';
+            ctx.fillStyle = colors.background;
             ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-            ctx.fillStyle = '#999';
+            ctx.fillStyle = colors.textSecondary;
             ctx.font = '14px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText('Train network to see state space values', this.canvas.width / 2, this.canvas.height / 2);
@@ -183,24 +185,24 @@ export class StateSpaceHeatmap {
                 ctx.fillRect(padding + i * cellWidth, 10 + j * cellHeight, cellWidth, cellHeight);
 
                 // Optional: grid lines for clarity
-                ctx.strokeStyle = 'rgba(0,0,0,0.05)';
+                ctx.strokeStyle = colors.border;
                 ctx.lineWidth = 0.5;
                 ctx.strokeRect(padding + i * cellWidth, 10 + j * cellHeight, cellWidth, cellHeight);
             }
         }
 
         // Draw legend
-        this.drawLegend(ctx, padding + gridSize * cellWidth + 5, 10, legendWidth, gridSize * cellHeight);
+        this.drawLegend(ctx, padding + gridSize * cellWidth + 5, 10, legendWidth, gridSize * cellHeight, colors);
 
         // Draw failure boundaries as annotations
         this.drawAnnotations(ctx, padding, 10, gridSize * cellWidth, gridSize * cellHeight);
 
         // Draw axes and labels
-        this.drawAxes(ctx, padding, 10, gridSize * cellWidth, gridSize * cellHeight);
+        this.drawAxes(ctx, padding, 10, gridSize * cellWidth, gridSize * cellHeight, colors);
 
         // Draw info text
         if (this.valueStats) {
-            ctx.fillStyle = '#888';
+            ctx.fillStyle = colors.textSecondary;
             ctx.font = '11px sans-serif';
             ctx.textAlign = 'left';
             const infoY = height - 6;
@@ -267,7 +269,7 @@ export class StateSpaceHeatmap {
         ctx.setLineDash([]);
     }
 
-    drawLegend(ctx, x, y, width, height) {
+    drawLegend(ctx, x, y, width, height, colors) {
         if (!this.valueStats) return;
 
         const steps = 256;
@@ -281,12 +283,12 @@ export class StateSpaceHeatmap {
         }
 
         // Legend border
-        ctx.strokeStyle = '#333';
+        ctx.strokeStyle = colors.textPrimary;
         ctx.lineWidth = 1;
         ctx.strokeRect(x, y, width, height);
 
         // Legend labels
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = colors.textPrimary;
         ctx.font = '9px sans-serif';
         ctx.textAlign = 'left';
         ctx.fillText(this.valueStats.p5.toFixed(1), x + width + 3, y + 8);
@@ -294,12 +296,12 @@ export class StateSpaceHeatmap {
         ctx.fillText(this.valueStats.p95.toFixed(1), x + width + 3, y + height - 3);
     }
 
-    drawAxes(ctx, x, y, width, height) {
+    drawAxes(ctx, x, y, width, height, colors) {
         const xDim = this.dims[this.xDim];
         const yDim = this.dims[this.yDim];
 
         // X-axis label
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = colors.textPrimary;
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(xDim.name, x + width / 2, y + height + 30);

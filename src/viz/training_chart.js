@@ -1,4 +1,4 @@
-import { debounce } from '../utils/helpers.js';
+import { debounce, getThemeColors } from '../utils/helpers.js';
 
 // Training chart visualizer
 export class TrainingChart {
@@ -35,13 +35,14 @@ export class TrainingChart {
         const width = this.canvas.width;
         const height = this.canvas.height;
         const padding = 40;
+        const colors = getThemeColors();
 
         // Clear
-        ctx.fillStyle = 'white';
+        ctx.fillStyle = colors.background;
         ctx.fillRect(0, 0, width, height);
 
         if (this.data.length === 0) {
-            ctx.fillStyle = '#999';
+            ctx.fillStyle = colors.textSecondary;
             ctx.font = '14px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText('Training data will appear here...', width / 2, height / 2);
@@ -55,7 +56,7 @@ export class TrainingChart {
         const range = maxReward - minReward || 1;
 
         // Draw grid
-        ctx.strokeStyle = '#e0e0e0';
+        ctx.strokeStyle = colors.grid;
         ctx.lineWidth = 1;
         for (let i = 0; i <= 5; i++) {
             const y = padding + (height - 2 * padding) * i / 5;
@@ -66,14 +67,14 @@ export class TrainingChart {
 
             // Y-axis labels
             const value = maxReward - (range * i / 5);
-            ctx.fillStyle = '#666';
+            ctx.fillStyle = colors.textSecondary;
             ctx.font = '11px sans-serif';
             ctx.textAlign = 'right';
             ctx.fillText(value.toFixed(0), padding - 5, y + 4);
         }
 
         // Draw line
-        ctx.strokeStyle = '#667eea';
+        ctx.strokeStyle = colors.primary;
         ctx.lineWidth = 2;
         ctx.beginPath();
 
@@ -91,7 +92,7 @@ export class TrainingChart {
         ctx.stroke();
 
         // Draw points
-        ctx.fillStyle = '#667eea';
+        ctx.fillStyle = colors.primary;
         this.data.forEach((point, i) => {
             const x = padding + (width - 2 * padding) * i / (this.data.length - 1 || 1);
             const y = padding + (height - 2 * padding) * (1 - (point.reward - minReward) / range);
@@ -103,7 +104,7 @@ export class TrainingChart {
 
         // Draw moving average
         if (this.data.length >= 10) {
-            ctx.strokeStyle = '#ff9800';
+            ctx.strokeStyle = colors.secondary;
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
@@ -125,7 +126,7 @@ export class TrainingChart {
         }
 
         // Labels
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = colors.textPrimary;
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('Episode', width / 2, height - 5);
@@ -138,14 +139,14 @@ export class TrainingChart {
 
         // Legend
         ctx.textAlign = 'left';
-        ctx.fillStyle = '#667eea';
+        ctx.fillStyle = colors.primary;
         ctx.fillRect(width - 150, 10, 15, 3);
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = colors.textSecondary;
         ctx.fillText('Episode Reward', width - 130, 15);
 
-        ctx.fillStyle = '#ff9800';
+        ctx.fillStyle = colors.secondary;
         ctx.fillRect(width - 150, 25, 15, 3);
-        ctx.fillStyle = '#666';
+        ctx.fillStyle = colors.textSecondary;
         ctx.fillText('10-Ep Average', width - 130, 30);
     }
 }

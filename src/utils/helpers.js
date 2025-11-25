@@ -35,6 +35,23 @@ export function debounce(func, wait) {
     };
 }
 
+// Get theme-aware colors for canvas rendering
+export function getThemeColors() {
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+
+    return {
+        background: isDark ? '#0a0e27' : '#ffffff',
+        textPrimary: isDark ? '#e8eaed' : '#1a1a1a',
+        textSecondary: isDark ? '#9aa0b8' : '#666666',
+        border: isDark ? '#2d3550' : '#e0e0e0',
+        primary: '#00d4ff',  // Cyan (works on both themes)
+        secondary: '#ff9800', // Orange (works on both themes)
+        success: '#6bcf7f',
+        grid: isDark ? '#2d3550' : '#e0e0e0',
+        placeholder: isDark ? '#999999' : '#999999'
+    };
+}
+
 // Copy all logs to clipboard
 export async function copyLogs() {
     const logDiv = document.getElementById('log');
