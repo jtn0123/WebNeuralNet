@@ -970,7 +970,7 @@ export class RLSandbox {
         }, 1000);
 
         // Optional: Play success sound or toast notification
-        new Toast('🎉 Episode Success! Survived 500 steps!', 'success');
+        Toast.success('🎉 Episode Success! Survived 500 steps!');
     }
 
     animate() {

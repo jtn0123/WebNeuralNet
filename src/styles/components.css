@@ -131,16 +131,23 @@ button.secondary:hover {
 }
 
 .metric {
-    background: white;
+    background: var(--color-bg-panel);
+    border: 1px solid var(--color-border);
     padding: 12px;
     border-radius: 8px;
     text-align: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+}
+
+.metric:hover {
+    background: var(--color-bg-panel-hover);
+    box-shadow: var(--shadow-md);
 }
 
 .metric-label {
     font-size: 12px;
-    color: #666;
+    color: var(--color-text-secondary);
     margin-bottom: 4px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -149,7 +156,8 @@ button.secondary:hover {
 .metric-value {
     font-size: 24px;
     font-weight: bold;
-    color: #667eea;
+    color: var(--color-primary);
+    font-family: var(--font-mono);
 }
 
 /* Settings Panel */
@@ -168,15 +176,17 @@ button.secondary:hover {
 
 .setting label {
     font-size: 12px;
-    color: #666;
+    color: var(--color-text-secondary);
     font-weight: 600;
 }
 
 .setting input {
     padding: 8px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--color-border);
     border-radius: 4px;
     font-size: 14px;
+    background: var(--color-bg-main);
+    color: var(--color-text-primary);
 }
 
 /* Log Component */
@@ -236,11 +246,11 @@ button.secondary:hover {
 
 .action-bar {
     flex: 1;
-    background: #f0f0f0;
+    background: var(--color-bg-main);
     border-radius: 8px;
     position: relative;
     overflow: hidden;
-    border: 2px solid #ddd;
+    border: 2px solid var(--color-border);
 }
 
 .action-bar-fill {
@@ -248,7 +258,7 @@ button.secondary:hover {
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(to top, #667eea, #764ba2);
+    background: linear-gradient(to top, var(--color-primary), #00a8cc);
     transform-origin: bottom;
 }
 
@@ -260,7 +270,7 @@ button.secondary:hover {
     text-align: center;
     font-weight: bold;
     font-size: 12px;
-    color: #333;
+    color: var(--color-text-primary);
     z-index: 1;
 }
 
@@ -288,7 +298,7 @@ button.secondary:hover {
     flex: 1;
     height: 6px;
     border-radius: 3px;
-    background: #ddd;
+    background: var(--color-border);
     outline: none;
     -webkit-appearance: none;
 }
@@ -299,7 +309,7 @@ button.secondary:hover {
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: #667eea;
+    background: var(--color-primary);
     cursor: pointer;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
@@ -308,7 +318,7 @@ button.secondary:hover {
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: #667eea;
+    background: var(--color-primary);
     cursor: pointer;
     border: none;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
@@ -318,14 +328,14 @@ button.secondary:hover {
     min-width: 120px;
     font-size: 13px;
     font-weight: 600;
-    color: #666;
+    color: var(--color-text-secondary);
 }
 
 .slider-control span {
     min-width: 50px;
     text-align: right;
     font-weight: bold;
-    color: #667eea;
+    color: var(--color-primary);
 }
 
 /* Training Statistics */
@@ -338,7 +348,8 @@ button.secondary:hover {
 }
 
 .training-stat {
-    background: white;
+    background: var(--color-bg-panel);
+    border: 1px solid var(--color-border);
     padding: 8px;
     border-radius: 6px;
     text-align: center;
@@ -348,7 +359,7 @@ button.secondary:hover {
 .training-stat-value {
     font-size: 16px;
     font-weight: bold;
-    color: #667eea;
+    color: var(--color-primary);
     margin-top: 4px;
 }
 
@@ -379,14 +390,14 @@ button.secondary:hover {
 
 /* Keyboard Hint */
 .keyboard-hint {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
+    background: rgba(255, 211, 61, 0.2);
+    border: 1px solid var(--color-warning);
     padding: 8px 12px;
     border-radius: 6px;
     margin-top: 8px;
     font-size: 12px;
     text-align: center;
-    color: #856404;
+    color: var(--color-warning);
 }
 
 /* Touch Controls for Mobile */
@@ -420,18 +431,19 @@ button.secondary:hover {
 
 /* Feature Panel */
 .feature-panel {
-    background: white;
+    background: var(--color-bg-panel);
+    border: 1px solid var(--color-border);
     padding: 12px;
     border-radius: 8px;
     margin-top: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-sm);
 }
 
 .feature-panel h3 {
     margin: 0 0 10px 0;
     font-size: 13px;
     font-weight: bold;
-    color: #333;
+    color: var(--color-text-primary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -444,9 +456,9 @@ button.secondary:hover {
 
 .feature-btn {
     padding: 8px 12px;
-    border: 1px solid #ddd;
-    background: white;
-    color: #333;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-main);
+    color: var(--color-text-primary);
     border-radius: 6px;
     font-size: 12px;
     font-weight: 500;
@@ -454,6 +466,7 @@ button.secondary:hover {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    transition: all 0.2s ease;
 }
 
 .preset-btn {
@@ -473,13 +486,14 @@ button.secondary:hover {
     align-items: center;
     gap: 8px;
     padding: 6px;
-    background: #f8f8f8;
+    background: var(--color-bg-main);
     border-radius: 4px;
+    border: 1px solid var(--color-border);
 }
 
 .shortcut-row kbd {
-    background: #333;
-    color: white;
+    background: var(--color-text-secondary);
+    color: var(--color-bg-panel);
     padding: 2px 6px;
     border-radius: 3px;
     font-family: monospace;
@@ -488,12 +502,12 @@ button.secondary:hover {
     min-width: 40px;
     text-align: center;
     display: inline-block;
-    border: 1px solid #000;
+    border: 1px solid var(--color-border);
     box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 
 .shortcut-row span {
-    color: #666;
+    color: var(--color-text-secondary);
     flex: 1;
 }
 
@@ -506,17 +520,18 @@ button.secondary:hover {
 }
 
 .state-bar-container {
-    background: white;
+    background: var(--color-bg-panel);
+    border: 1px solid var(--color-border);
     padding: 12px;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-sm);
     position: relative;
 }
 
 .state-bar-label {
     font-size: 11px;
     font-weight: bold;
-    color: #666;
+    color: var(--color-text-secondary);
     margin-bottom: 6px;
     display: flex;
     justify-content: space-between;
@@ -525,23 +540,23 @@ button.secondary:hover {
 
 .state-bar-value {
     font-size: 14px;
-    color: #667eea;
+    color: var(--color-primary);
     font-weight: bold;
 }
 
 .state-bar-track {
     height: 24px;
-    background: #f0f0f0;
+    background: var(--color-bg-main);
     border-radius: 12px;
     position: relative;
     overflow: hidden;
-    border: 1px solid #ddd;
+    border: 1px solid var(--color-border);
 }
 
 .state-bar-fill {
     position: absolute;
     height: 100%;
-    background: linear-gradient(90deg, #667eea, #764ba2);
+    background: linear-gradient(90deg, var(--color-primary), #00a8cc);
     border-radius: 12px;
 }
 
@@ -551,7 +566,7 @@ button.secondary:hover {
     top: 0;
     bottom: 0;
     width: 2px;
-    background: #333;
+    background: var(--color-text-secondary);
     z-index: 1;
 }
 
@@ -582,17 +597,18 @@ button.secondary:hover {
 
 /* Network Perception Display */
 .network-perception {
-    background: white;
+    background: var(--color-bg-panel);
+    border: 1px solid var(--color-border);
     padding: 12px;
     border-radius: 8px;
     margin-top: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-sm);
 }
 
 .perception-title {
     font-size: 12px;
     font-weight: bold;
-    color: #667eea;
+    color: var(--color-primary);
     margin-bottom: 8px;
 }
 
@@ -605,31 +621,31 @@ button.secondary:hover {
 .perception-input {
     text-align: center;
     padding: 8px;
-    background: #f8f9fa;
+    background: var(--color-bg-main);
     border-radius: 6px;
-    border: 2px solid transparent;
+    border: 2px solid var(--color-border);
 }
 
 .perception-input.active {
-    border-color: #667eea;
-    background: #e3f2fd;
+    border-color: var(--color-primary);
+    background: rgba(0, 212, 255, 0.1);
 }
 
 .perception-input-label {
     font-size: 9px;
-    color: #666;
+    color: var(--color-text-secondary);
     margin-bottom: 4px;
 }
 
 .perception-input-value {
     font-size: 13px;
     font-weight: bold;
-    color: #333;
+    color: var(--color-text-primary);
 }
 
 .perception-input-bar {
     height: 4px;
-    background: #ddd;
+    background: var(--color-border);
     border-radius: 2px;
     margin-top: 4px;
     overflow: hidden;
@@ -637,7 +653,7 @@ button.secondary:hover {
 
 .perception-input-bar-fill {
     height: 100%;
-    background: #667eea;
+    background: var(--color-primary);
 }
 
 /* State Display */
@@ -649,20 +665,20 @@ button.secondary:hover {
 }
 
 .state-item {
-    background: white;
+    background: var(--color-bg-panel);
     padding: 10px;
     border-radius: 8px;
-    border: 2px solid #ddd;
+    border: 2px solid var(--color-border);
 }
 
 .state-item.active {
-    border-color: #667eea;
-    box-shadow: 0 0 8px rgba(102, 126, 234, 0.3);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
 }
 
 .state-label {
     font-size: 11px;
-    color: #666;
+    color: var(--color-text-secondary);
     font-weight: bold;
     margin-bottom: 6px;
     display: flex;
@@ -676,14 +692,14 @@ button.secondary:hover {
 
 .state-bar {
     height: 100%;
-    background: linear-gradient(90deg, #667eea, #764ba2);
+    background: linear-gradient(90deg, var(--color-primary), #00a8cc);
     border-radius: 4px;
 }
 
 .state-value {
     font-size: 13px;
     font-weight: bold;
-    color: #667eea;
+    color: var(--color-primary);
     margin-top: 4px;
     text-align: center;
 }
@@ -694,7 +710,7 @@ button.secondary:hover {
     top: 0;
     bottom: 0;
     width: 2px;
-    background: #333;
+    background: var(--color-text-secondary);
     opacity: 0.3;
 }
 
@@ -729,11 +745,11 @@ button.secondary:hover {
 
 .importance-bar {
     height: 60px;
-    background: #f0f0f0;
+    background: var(--color-bg-main);
     border-radius: 6px;
     position: relative;
     overflow: hidden;
-    border: 2px solid #ddd;
+    border: 2px solid var(--color-border);
 }
 
 .importance-fill {
@@ -741,7 +757,7 @@ button.secondary:hover {
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(to top, #4caf50, #81c784);
+    background: linear-gradient(to top, var(--color-success), #00d084);
     transform-origin: bottom;
 }
 
@@ -784,9 +800,9 @@ button.secondary:hover {
     gap: 12px;
     margin-bottom: 12px;
     padding: 12px;
-    background: #f9f9f9;
+    background: var(--color-bg-panel);
     border-radius: 6px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--color-border);
 }
 
 .heatmap-control-row {
@@ -805,15 +821,16 @@ button.secondary:hover {
 .heatmap-control-group label {
     font-size: 12px;
     font-weight: 600;
-    color: #333;
+    color: var(--color-text-primary);
     white-space: nowrap;
 }
 
 .heatmap-control-group select {
     padding: 6px 8px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--color-border);
     border-radius: 4px;
-    background: white;
+    background: var(--color-bg-main);
+    color: var(--color-text-primary);
     font-size: 12px;
     cursor: pointer;
     min-width: 120px;
@@ -831,7 +848,7 @@ button.secondary:hover {
 
 #update-interval-value {
     font-weight: bold;
-    color: #667eea;
+    color: var(--color-primary);
 }
 
 @media (max-width: 800px) {
