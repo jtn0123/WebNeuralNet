@@ -58,27 +58,42 @@ export class TrainingLossChart {
         ctx.lineTo(padding, height - padding);
         ctx.stroke();
 
-        // Draw actor loss line
+        // Calculate point positions for smooth curves
+        const actorPoints = this.actorLosses.map((loss, i) => ({
+            x: padding + (i / (this.actorLosses.length - 1 || 1)) * (width - 2 * padding),
+            y: height - padding - (loss / maxLoss) * (height - 2 * padding)
+        }));
+
+        const criticPoints = this.criticLosses.map((loss, i) => ({
+            x: padding + (i / (this.criticLosses.length - 1 || 1)) * (width - 2 * padding),
+            y: height - padding - (loss / maxLoss) * (height - 2 * padding)
+        }));
+
+        // Draw actor loss line with smooth curves
         ctx.strokeStyle = colors.primary;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        for (let i = 0; i < this.actorLosses.length; i++) {
-            const x = padding + (i / (this.actorLosses.length - 1 || 1)) * (width - 2 * padding);
-            const y = height - padding - (this.actorLosses[i] / maxLoss) * (height - 2 * padding);
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+        ctx.moveTo(actorPoints[0].x, actorPoints[0].y);
+        for (let i = 1; i < actorPoints.length; i++) {
+            const cp = {
+                x: (actorPoints[i - 1].x + actorPoints[i].x) / 2,
+                y: (actorPoints[i - 1].y + actorPoints[i].y) / 2
+            };
+            ctx.quadraticCurveTo(cp.x, cp.y, actorPoints[i].x, actorPoints[i].y);
         }
         ctx.stroke();
 
-        // Draw critic loss line
+        // Draw critic loss line with smooth curves
         ctx.strokeStyle = colors.secondary;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        for (let i = 0; i < this.criticLosses.length; i++) {
-            const x = padding + (i / (this.criticLosses.length - 1 || 1)) * (width - 2 * padding);
-            const y = height - padding - (this.criticLosses[i] / maxLoss) * (height - 2 * padding);
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+        ctx.moveTo(criticPoints[0].x, criticPoints[0].y);
+        for (let i = 1; i < criticPoints.length; i++) {
+            const cp = {
+                x: (criticPoints[i - 1].x + criticPoints[i].x) / 2,
+                y: (criticPoints[i - 1].y + criticPoints[i].y) / 2
+            };
+            ctx.quadraticCurveTo(cp.x, cp.y, criticPoints[i].x, criticPoints[i].y);
         }
         ctx.stroke();
 

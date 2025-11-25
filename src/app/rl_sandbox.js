@@ -1,5 +1,6 @@
 import { CONSTANTS } from '../utils/constants.js';
 import { log, copyLogs } from '../utils/helpers.js';
+import { RunningStats } from '../utils/running_stats.js';
 import { Toast } from '../utils/toast.js';
 import { CartPole } from '../ml/cartpole.js';
 import { ActorCriticNetwork } from '../ml/actor_critic_network.js';
@@ -48,6 +49,15 @@ export class RLSandbox {
         this.lastActorLoss = 0;
         this.lastCriticLoss = 0;
 
+        // Running statistics for state normalization
+        this.stateStats = new RunningStats(4);
+        this.useRunningStats = true;
+
+        // Learning rate schedule
+        this.lrSchedule = 'linear'; // 'linear', 'exponential', or 'none'
+        this.maxEpisodes = 5000;
+        this.episodesRun = 0;
+
         this.initNetwork();
         this.setupControls();
         this.setupKeyboard();
@@ -68,13 +78,40 @@ export class RLSandbox {
     }
 
     normalizeState(state) {
-        // Normalize inputs to roughly [-1, 1] range for better network performance
+        // Normalize inputs using running statistics if available, otherwise use constants
+        if (this.useRunningStats && this.stateStats.count > 10) {
+            return this.stateStats.normalize(state);
+        }
+
+        // Fallback to constant-based normalization
         return [
             state[0] / CONSTANTS.MAX_X,
             state[1] / CONSTANTS.MAX_X_DOT,
             state[2] / CONSTANTS.MAX_THETA,
             state[3] / CONSTANTS.MAX_THETA_DOT
         ];
+    }
+
+    // Update learning rate based on schedule
+    updateLearningRate() {
+        let newLr = this.initialLearningRate;
+
+        if (this.lrSchedule === 'linear') {
+            // Linear decay from initial to 10% of initial
+            const decayFactor = 1 - 0.9 * (this.episodesRun / this.maxEpisodes);
+            newLr = this.initialLearningRate * decayFactor;
+        } else if (this.lrSchedule === 'exponential') {
+            // Exponential decay with half-life at 75% of max episodes
+            const halfLife = 0.75 * this.maxEpisodes;
+            newLr = this.initialLearningRate * Math.exp(-this.episodesRun / halfLife);
+        }
+
+        // Ensure LR stays within bounds
+        newLr = Math.max(0.00001, Math.min(0.01, newLr));
+
+        if (this.network) {
+            this.network.setLearningRate(newLr);
+        }
     }
 
     initNetwork() {
@@ -112,12 +149,6 @@ export class RLSandbox {
         document.getElementById('preset-exploration').addEventListener('click', () => this.applyPreset('exploration'));
         document.getElementById('preset-production').addEventListener('click', () => this.applyPreset('production'));
 
-        document.getElementById('hidden-size').addEventListener('change', () => {
-            if (!this.isTraining && !this.isManual) {
-                this.initNetwork();
-            }
-        });
-
         document.getElementById('network-depth').addEventListener('change', () => {
             if (!this.isTraining && !this.isManual) {
                 this.initNetwork();
@@ -150,12 +181,17 @@ export class RLSandbox {
             }
         });
 
+        // Single listener for hidden-size that validates and then reinitializes network
         document.getElementById('hidden-size').addEventListener('change', (e) => {
             const size = parseInt(e.target.value);
             if (size < 16 || size > 256 || size % 8 !== 0) {
                 Toast.error('Hidden layer size must be between 16 and 256 (multiples of 8)');
                 e.target.value = '32';
                 return;
+            }
+            // Only reinitialize if validation passes and not training/manual
+            if (!this.isTraining && !this.isManual) {
+                this.initNetwork();
             }
         });
 
@@ -407,10 +443,19 @@ export class RLSandbox {
             // Normalize state for network
             const normState = this.normalizeState(state);
 
+            // Update running statistics for state normalization
+            if (train) {
+                this.stateStats.update(state);
+            }
+
             // Use reduced epsilon-greedy with entropy bonus (combined exploration)
             const action = train ?
                 this.network.selectAction(normState, this.exploration) :
                 this.network.selectAction(normState, 0);
+
+            // Get action probability from network's last output (set by selectAction's internal forward call)
+            // This is needed for PPO importance weighting
+            const actionProb = this.network.lastOutput ? this.network.lastOutput[action] : (1.0 / this.network.outputSize);
 
             const result = this.env.step(action);
 
@@ -421,6 +466,7 @@ export class RLSandbox {
             this.currentTrajectory.push({
                 state: [...normState], // Store normalized state
                 action: action,
+                prob: actionProb, // Store action probability for PPO ratio calculation
                 reward: shapedReward
             });
 
@@ -445,12 +491,13 @@ export class RLSandbox {
         }
 
         if (train && this.currentTrajectory.length > 0) {
+            this.episodesRun++;
+
             const gamma = parseFloat(document.getElementById('discount').value);
             const entropyCoef = parseFloat(document.getElementById('entropy-coef').value);
 
-            // Apply learning rate decay: LR *= 0.9995^episode
-            const decayedLR = this.initialLearningRate * Math.pow(0.9995, this.episode);
-            this.network.setLearningRate(decayedLR);
+            // Update learning rate using schedule
+            this.updateLearningRate();
 
             const updateMetrics = this.network.update(this.currentTrajectory, gamma, entropyCoef, 1.0, 2.0, this.gaeLambda);
 
@@ -472,8 +519,8 @@ export class RLSandbox {
             });
             this.metricsDashboard.render();
 
-            // Update heatmap every 25 episodes
-            if (this.episode % 25 === 0) {
+            // Update heatmap at configured interval
+            if (this.episode % this.heatmapUpdateInterval === 0) {
                 try {
                     this.heatmap.computeHeatmap(this.network, this.env);
                 } catch (e) {
@@ -503,12 +550,23 @@ export class RLSandbox {
         if (this.episode % CONSTANTS.LOG_INTERVAL_EPISODES === 0) {
             const avgLast10 = this.survivalHistory.slice(-CONSTANTS.SURVIVAL_HISTORY_WINDOW).reduce((a, b) => a + b, 0) / Math.min(CONSTANTS.SURVIVAL_HISTORY_WINDOW, this.survivalHistory.length);
             const bestSurvival = this.survivalHistory.length > 0 ? Math.max(...this.survivalHistory) : 0;
-            const decayedLR = this.initialLearningRate * Math.pow(0.9995, this.episode);
+
+            // Calculate current learning rate based on schedule
+            let currentLR = this.initialLearningRate;
+            if (this.lrSchedule === 'linear') {
+                const decayFactor = 1 - 0.9 * (this.episodesRun / this.maxEpisodes);
+                currentLR = this.initialLearningRate * decayFactor;
+            } else if (this.lrSchedule === 'exponential') {
+                const halfLife = 0.75 * this.maxEpisodes;
+                currentLR = this.initialLearningRate * Math.exp(-this.episodesRun / halfLife);
+            }
+
             const entropy = this.network.getEntropy();
             const valueEstimate = this.network.lastValue !== undefined ? this.network.lastValue : 0;
+            const statsCount = this.stateStats.count;
 
             // Enhanced logging with all diagnostic metrics
-            log(`Ep ${this.episode}: Steps=${this.env.steps} (Avg=${avgLast10.toFixed(1)}, Best=${bestSurvival}) | ε=${this.exploration.toFixed(3)}, LR=${decayedLR.toExponential(2)} | Loss: A=${this.lastActorLoss.toFixed(3)}, C=${this.lastCriticLoss.toFixed(3)} | H=${entropy.toFixed(3)}, V=${valueEstimate.toFixed(1)} | |∇|=${this.lastGradNorm.toFixed(2)}`);
+            log(`Ep ${this.episode}: Steps=${this.env.steps} (Avg=${avgLast10.toFixed(1)}, Best=${bestSurvival}) | ε=${this.exploration.toFixed(3)}, LR=${currentLR.toExponential(2)}, Stats=${statsCount} | Loss: A=${this.lastActorLoss.toFixed(3)}, C=${this.lastCriticLoss.toFixed(3)} | H=${entropy.toFixed(3)}, V=${valueEstimate.toFixed(1)} | |∇|=${this.lastGradNorm.toFixed(2)}`);
         }
 
         this.updateNetworkStats();
@@ -549,9 +607,11 @@ export class RLSandbox {
         this.setMode('IDLE');
 
         this.episode = 0;
+        this.episodesRun = 0;
         this.survivalHistory = [];
         this.explorationHistory = [];
         this.exploration = CONSTANTS.INITIAL_EXPLORATION; // Reset exploration
+        this.stateStats.reset(); // Reset running statistics
         this.chart.clear();
         this.lossChart.clear();
         this.heatmap.clear();
@@ -561,7 +621,7 @@ export class RLSandbox {
         this.updateStateDisplay();
         this.updateNetworkStats();
 
-        log('Policy reset - exploration reset to 0.2 with GAE enabled');
+        log('Policy reset - exploration reset to 0.2 with GAE enabled, running stats cleared');
     }
 
     updateActionBars() {
@@ -963,6 +1023,9 @@ export class RLSandbox {
         // Add victory animation class to canvas
         const canvas = this.renderer.canvas;
         canvas.classList.add('victory-animation');
+
+        // Trigger particle celebration
+        this.renderer.celebrateVictory();
 
         // Remove class after animation completes
         setTimeout(() => {

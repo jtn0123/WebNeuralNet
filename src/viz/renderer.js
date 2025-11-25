@@ -1,5 +1,6 @@
 import { CONSTANTS } from '../utils/constants.js';
 import { debounce } from '../utils/helpers.js';
+import { ParticleSystem } from './particle_system.js';
 
 // Rendering
 export class Renderer {
@@ -9,6 +10,8 @@ export class Renderer {
         // Create offscreen canvas for double buffering
         this.offscreenCanvas = document.createElement('canvas');
         this.offscreenCtx = this.offscreenCanvas.getContext('2d');
+        this.particleSystem = new ParticleSystem();
+        this.prevCartX = 0;
         this.resize();
         window.addEventListener('resize', debounce(() => this.resize(), 150));
     }
@@ -22,10 +25,21 @@ export class Renderer {
         this.offscreenCanvas.height = rect.height;
     }
 
+    // Trigger victory celebration particles
+    celebrateVictory() {
+        const width = this.offscreenCanvas.width;
+        const height = this.offscreenCanvas.height;
+        // Burst from center of canvas
+        this.particleSystem.createVictoryBurst(width / 2, height / 2, 40);
+    }
+
     render(env) {
         const ctx = this.offscreenCtx;
         const width = this.offscreenCanvas.width;
         const height = this.offscreenCanvas.height;
+
+        // Update particles
+        this.particleSystem.update();
 
         // Clear
         ctx.fillStyle = 'rgba(227, 242, 253, 0.5)';
@@ -67,8 +81,34 @@ export class Renderer {
         const cartWidth = CONSTANTS.CART_WIDTH;
         const cartHeight = CONSTANTS.CART_HEIGHT;
 
+        // Draw drop shadow for cart
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 3;
+        ctx.fillRect(cartX - cartWidth / 2, cartY - cartHeight, cartWidth, cartHeight);
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+
+        // Motion blur effect for cart (subtle)
+        const cartVelocity = Math.abs(cartX - this.prevCartX);
+        if (cartVelocity > 0.5) {
+            ctx.fillStyle = 'rgba(25, 118, 210, 0.1)';
+            const blurTrail = Math.min(15, cartVelocity);
+            ctx.fillRect(cartX + blurTrail - cartWidth / 2, cartY - cartHeight, cartWidth, cartHeight);
+        }
+
+        // Draw cart
         ctx.fillStyle = '#1976d2';
         ctx.fillRect(cartX - cartWidth / 2, cartY - cartHeight, cartWidth, cartHeight);
+
+        // Dust particles when cart moves
+        if (Math.abs(env.xDot) > 0.5) {
+            this.particleSystem.createDustParticles(cartX, cartY, 2);
+        }
 
         // Wheels
         ctx.fillStyle = '#333';
@@ -93,13 +133,27 @@ export class Renderer {
             poleColor = '#ff9800'; // orange
         }
 
+        // Stress particles when pole is critical
+        if (angleRatio > CONSTANTS.POLE_CRITICAL_THRESHOLD) {
+            this.particleSystem.createStressParticles(poleX, poleY, 3);
+        }
+
+        // Draw pole with drop shadow
         ctx.strokeStyle = poleColor;
         ctx.lineWidth = 6;
         ctx.lineCap = 'round';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetX = 1;
+        ctx.shadowOffsetY = 2;
         ctx.beginPath();
         ctx.moveTo(cartX, cartY - cartHeight);
         ctx.lineTo(poleX, poleY);
         ctx.stroke();
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
 
         // Pole tip
         ctx.fillStyle = poleColor;
@@ -139,6 +193,9 @@ export class Renderer {
             ctx.fill();
         }
 
+        // Draw particles
+        this.particleSystem.draw(ctx);
+
         // State info overlay
         ctx.fillStyle = '#333';
         ctx.font = 'bold 14px monospace';
@@ -151,6 +208,9 @@ export class Renderer {
             ctx.font = 'bold 16px sans-serif';
             ctx.fillText('⚠️ CRITICAL', width - 120, 30);
         }
+
+        // Store current position for motion blur calculation
+        this.prevCartX = cartX;
 
         // Blit offscreen canvas to visible canvas
         this.ctx.drawImage(this.offscreenCanvas, 0, 0);

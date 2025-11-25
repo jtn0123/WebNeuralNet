@@ -60,6 +60,13 @@ export class ActorCriticNetwork {
         this.lastOutput = null;
         this.lastValue = 0;
 
+        // Track gradient magnitudes for gradient flow visualization
+        this.lastGradientMagnitudes = {
+            layers: this.layers.map(() => ({ w: 0, b: 0 })),
+            actor: { w: 0, b: 0 },
+            critic: { w: 0, b: 0 }
+        };
+
         // Pre-allocate reusable buffers for performance
         this.bufferPool = {
             softmax: {
@@ -99,6 +106,50 @@ export class ActorCriticNetwork {
             matrix[i] = new Float32Array(outputSize);
             for (let j = 0; j < outputSize; j++) {
                 matrix[i][j] = (Math.random() - 0.5) * 2 * scale;
+            }
+        }
+        return matrix;
+    }
+
+    // Orthogonal initialization for better convergence
+    orthogonalInitialize(inputSize, outputSize) {
+        const a = [];
+        for (let i = 0; i < Math.max(inputSize, outputSize); i++) {
+            a[i] = new Float32Array(Math.max(inputSize, outputSize));
+            for (let j = 0; j < Math.max(inputSize, outputSize); j++) {
+                a[i][j] = Math.random() * 2 - 1; // Normal-ish random
+            }
+        }
+
+        // QR decomposition (simplified Gram-Schmidt)
+        for (let i = 0; i < Math.max(inputSize, outputSize); i++) {
+            let norm = 0;
+            for (let k = 0; k < i; k++) {
+                let dot = 0;
+                for (let j = 0; j < Math.max(inputSize, outputSize); j++) {
+                    dot += a[i][j] * a[k][j];
+                }
+                for (let j = 0; j < Math.max(inputSize, outputSize); j++) {
+                    a[i][j] -= dot * a[k][j];
+                }
+            }
+            for (let j = 0; j < Math.max(inputSize, outputSize); j++) {
+                norm += a[i][j] * a[i][j];
+            }
+            norm = Math.sqrt(norm);
+            if (norm > 1e-10) {
+                for (let j = 0; j < Math.max(inputSize, outputSize); j++) {
+                    a[i][j] /= norm;
+                }
+            }
+        }
+
+        // Extract to proper size
+        const matrix = [];
+        for (let i = 0; i < inputSize; i++) {
+            matrix[i] = new Float32Array(outputSize);
+            for (let j = 0; j < outputSize; j++) {
+                matrix[i][j] = a[i][j];
             }
         }
         return matrix;
@@ -191,7 +242,8 @@ export class ActorCriticNetwork {
         for (let j = 0; j < current.length; j++) {
             valueSum += current[j] * this.criticHead.w[j][0];
         }
-        this.lastValue = valueSum;
+        // Clip value to reasonable range to prevent divergence
+        this.lastValue = Math.max(-500, Math.min(500, valueSum));
 
         return { policy: this.lastOutput, value: this.lastValue };
     }
@@ -454,6 +506,46 @@ export class ActorCriticNetwork {
             if (epoch === epochs - 1) {
                  totalActorLoss = epochActorLoss / batchSize;
                  totalCriticLoss = epochCriticLoss / batchSize;
+
+                // Calculate gradient magnitudes for visualization
+                for (let i = 0; i < layerGrads.length; i++) {
+                    let wMag = 0, bMag = 0;
+                    for (let j = 0; j < layerGrads[i].w.length; j++) {
+                        for (let k = 0; k < layerGrads[i].w[j].length; k++) {
+                            wMag += layerGrads[i].w[j][k] * layerGrads[i].w[j][k];
+                        }
+                    }
+                    for (let j = 0; j < layerGrads[i].b.length; j++) {
+                        bMag += layerGrads[i].b[j] * layerGrads[i].b[j];
+                    }
+                    this.lastGradientMagnitudes.layers[i].w = Math.sqrt(wMag) / (layerGrads[i].w.length + 1e-10);
+                    this.lastGradientMagnitudes.layers[i].b = Math.sqrt(bMag) / (layerGrads[i].b.length + 1e-10);
+                }
+
+                // Actor and critic gradient magnitudes
+                let actorWMag = 0, actorBMag = 0;
+                for (let j = 0; j < actorGrad.w.length; j++) {
+                    for (let k = 0; k < actorGrad.w[j].length; k++) {
+                        actorWMag += actorGrad.w[j][k] * actorGrad.w[j][k];
+                    }
+                }
+                for (let j = 0; j < actorGrad.b.length; j++) {
+                    actorBMag += actorGrad.b[j] * actorGrad.b[j];
+                }
+                this.lastGradientMagnitudes.actor.w = Math.sqrt(actorWMag) / (actorGrad.w.length + 1e-10);
+                this.lastGradientMagnitudes.actor.b = Math.sqrt(actorBMag) / (actorGrad.b.length + 1e-10);
+
+                let criticWMag = 0, criticBMag = 0;
+                for (let j = 0; j < criticGrad.w.length; j++) {
+                    for (let k = 0; k < criticGrad.w[j].length; k++) {
+                        criticWMag += criticGrad.w[j][k] * criticGrad.w[j][k];
+                    }
+                }
+                for (let j = 0; j < criticGrad.b.length; j++) {
+                    criticBMag += criticGrad.b[j] * criticGrad.b[j];
+                }
+                this.lastGradientMagnitudes.critic.w = Math.sqrt(criticWMag) / (criticGrad.w.length + 1e-10);
+                this.lastGradientMagnitudes.critic.b = Math.sqrt(criticBMag) / (criticGrad.b.length + 1e-10);
             }
         }
 

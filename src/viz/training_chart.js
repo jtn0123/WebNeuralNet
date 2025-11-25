@@ -7,8 +7,53 @@ export class TrainingChart {
         this.ctx = this.canvas.getContext('2d');
         this.data = [];
         this.maxDataPoints = 100;
+        this.mousePos = null;
+        this.hoverPoint = null;
         this.resize();
         window.addEventListener('resize', debounce(() => this.resize(), 150));
+
+        // Track mouse position for tooltips
+        this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+        this.canvas.addEventListener('mouseleave', () => {
+            this.mousePos = null;
+            this.hoverPoint = null;
+        });
+    }
+
+    onMouseMove(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        this.mousePos = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+
+        // Find nearest data point
+        if (this.data.length > 0) {
+            const padding = 40;
+            const width = this.canvas.width;
+            const height = this.canvas.height;
+
+            const rewards = this.data.map(d => d.reward);
+            const minReward = Math.min(...rewards);
+            const maxReward = Math.max(...rewards);
+            const range = maxReward - minReward || 1;
+
+            let closestPoint = null;
+            let closestDist = Infinity;
+
+            this.data.forEach((point, i) => {
+                const x = padding + (width - 2 * padding) * i / (this.data.length - 1 || 1);
+                const y = padding + (height - 2 * padding) * (1 - (point.reward - minReward) / range);
+                const dist = Math.sqrt((this.mousePos.x - x) ** 2 + (this.mousePos.y - y) ** 2);
+
+                if (dist < closestDist && dist < 15) {
+                    closestDist = dist;
+                    closestPoint = { ...point, index: i, x, y };
+                }
+            });
+
+            this.hoverPoint = closestPoint;
+        }
     }
 
     resize() {
@@ -55,6 +100,12 @@ export class TrainingChart {
         const maxReward = Math.max(...rewards);
         const range = maxReward - minReward || 1;
 
+        // Calculate point positions for smooth curves
+        const points = this.data.map((point, i) => ({
+            x: padding + (width - 2 * padding) * i / (this.data.length - 1 || 1),
+            y: padding + (height - 2 * padding) * (1 - (point.reward - minReward) / range)
+        }));
+
         // Draw grid
         ctx.strokeStyle = colors.grid;
         ctx.lineWidth = 1;
@@ -73,21 +124,19 @@ export class TrainingChart {
             ctx.fillText(value.toFixed(0), padding - 5, y + 4);
         }
 
-        // Draw line
+        // Draw smooth curve using quadratic Bezier interpolation
         ctx.strokeStyle = colors.primary;
         ctx.lineWidth = 2;
         ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
 
-        this.data.forEach((point, i) => {
-            const x = padding + (width - 2 * padding) * i / (this.data.length - 1 || 1);
-            const y = padding + (height - 2 * padding) * (1 - (point.reward - minReward) / range);
-
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        });
+        for (let i = 1; i < points.length; i++) {
+            const cp = { // Control point at midpoint
+                x: (points[i - 1].x + points[i].x) / 2,
+                y: (points[i - 1].y + points[i].y) / 2
+            };
+            ctx.quadraticCurveTo(cp.x, cp.y, points[i].x, points[i].y);
+        }
 
         ctx.stroke();
 
@@ -102,23 +151,29 @@ export class TrainingChart {
             ctx.fill();
         });
 
-        // Draw moving average
+        // Draw moving average with smooth curves
         if (this.data.length >= 10) {
+            const avgPoints = [];
+            for (let i = 9; i < this.data.length; i++) {
+                const avg = this.data.slice(i - 9, i + 1).reduce((sum, d) => sum + d.reward, 0) / 10;
+                avgPoints.push({
+                    x: padding + (width - 2 * padding) * i / (this.data.length - 1),
+                    y: padding + (height - 2 * padding) * (1 - (avg - minReward) / range)
+                });
+            }
+
             ctx.strokeStyle = colors.secondary;
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
+            ctx.moveTo(avgPoints[0].x, avgPoints[0].y);
 
-            for (let i = 9; i < this.data.length; i++) {
-                const avg = this.data.slice(i - 9, i + 1).reduce((sum, d) => sum + d.reward, 0) / 10;
-                const x = padding + (width - 2 * padding) * i / (this.data.length - 1);
-                const y = padding + (height - 2 * padding) * (1 - (avg - minReward) / range);
-
-                if (i === 9) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
+            for (let i = 1; i < avgPoints.length; i++) {
+                const cp = {
+                    x: (avgPoints[i - 1].x + avgPoints[i].x) / 2,
+                    y: (avgPoints[i - 1].y + avgPoints[i].y) / 2
+                };
+                ctx.quadraticCurveTo(cp.x, cp.y, avgPoints[i].x, avgPoints[i].y);
             }
 
             ctx.stroke();
@@ -148,5 +203,47 @@ export class TrainingChart {
         ctx.fillRect(width - 150, 25, 15, 3);
         ctx.fillStyle = colors.textSecondary;
         ctx.fillText('10-Ep Average', width - 130, 30);
+
+        // Draw tooltip
+        if (this.hoverPoint) {
+            const tooltipText = `Episode ${this.hoverPoint.episode}: ${this.hoverPoint.reward.toFixed(0)} steps`;
+            const metrics = {
+                text: tooltipText,
+                width: ctx.measureText(tooltipText).width + 12,
+                height: 24
+            };
+
+            let tooltipX = this.hoverPoint.x + 10;
+            let tooltipY = this.hoverPoint.y - 30;
+
+            // Keep tooltip within bounds
+            if (tooltipX + metrics.width > width) {
+                tooltipX = this.hoverPoint.x - metrics.width - 10;
+            }
+            if (tooltipY < 10) {
+                tooltipY = this.hoverPoint.y + 20;
+            }
+
+            // Draw tooltip background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillRect(tooltipX - 2, tooltipY - metrics.height + 4, metrics.width, metrics.height);
+
+            // Draw tooltip border
+            ctx.strokeStyle = colors.primary;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(tooltipX - 2, tooltipY - metrics.height + 4, metrics.width, metrics.height);
+
+            // Draw tooltip text
+            ctx.fillStyle = colors.textPrimary;
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(tooltipText, tooltipX + 4, tooltipY - 8);
+
+            // Highlight hovered point
+            ctx.fillStyle = colors.primary;
+            ctx.beginPath();
+            ctx.arc(this.hoverPoint.x, this.hoverPoint.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
 }
