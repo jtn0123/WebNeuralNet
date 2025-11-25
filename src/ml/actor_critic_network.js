@@ -375,16 +375,22 @@ export class ActorCriticNetwork {
 
             let epochActorLoss = 0;
             let epochCriticLoss = 0;
+            
+            // Store current epoch's values for next epoch's clipping baseline
+            const epochValues = new Array(flatTrajectory.length);
 
             // Iterate through all samples in batch
             for (let i = 0; i < flatTrajectory.length; i++) {
                 const { state, action, prob: oldProb } = flatTrajectory[i];
                 const advantage = normalizedAdv[i];
                 const returnValue = allReturns[i];
-                const value = allValues[i]; // Using fixed targets for stability within epochs
+                const oldValue = allValues[i]; // Value from previous epoch (or initial pass for epoch 0)
 
                 // Re-forward to get CURRENT policy probabilities
                 const { policy, value: currentValue } = this.forward(state);
+                
+                // Store current value for next epoch's baseline
+                epochValues[i] = currentValue;
                 const newProb = policy[action];
 
                 // Calculate Ratio: r(theta) = pi_new / pi_old
@@ -450,8 +456,8 @@ export class ActorCriticNetwork {
 
 
                 // Critic Loss: PPO Value Clipping with Huber Loss
-                // PPO clips the value prediction between old value and new value
-                const oldValue = value; // From initial forward pass
+                // PPO clips the value prediction relative to the previous epoch's estimate
+                // oldValue comes from allValues[i], which is updated after each epoch
                 const valueClipEpsilon = 0.2; // PPO value clip range
                 const clippedValue = oldValue + Math.max(-valueClipEpsilon, Math.min(valueClipEpsilon, currentValue - oldValue));
 
@@ -530,6 +536,12 @@ export class ActorCriticNetwork {
             this.optimizers.actor.b.update(this.actorHead.b, actorGrad.b);
             this.optimizers.critic.w.update(this.criticHead.w, criticGrad.w);
             this.optimizers.critic.b.update(this.criticHead.b, criticGrad.b);
+            
+            // Update allValues with this epoch's values for next epoch's PPO value clipping
+            // This ensures clipping is relative to the previous epoch, not the initial values
+            for (let i = 0; i < epochValues.length; i++) {
+                allValues[i] = epochValues[i];
+            }
 
             // Keep stats for last epoch
             if (epoch === epochs - 1) {
