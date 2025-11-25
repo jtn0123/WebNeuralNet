@@ -181,6 +181,13 @@ export class RLSandbox {
             }
         });
 
+        document.getElementById('lr-schedule').addEventListener('change', (e) => {
+            const schedule = e.target.value;
+            this.lrSchedule = schedule;
+            const scheduleNames = { 'none': 'Fixed', 'linear': 'Linear Decay', 'exponential': 'Exponential Decay' };
+            log(`Learning rate schedule: ${scheduleNames[schedule]}`);
+        });
+
         // Single listener for hidden-size that validates and then reinitializes network
         document.getElementById('hidden-size').addEventListener('change', (e) => {
             const size = parseInt(e.target.value);

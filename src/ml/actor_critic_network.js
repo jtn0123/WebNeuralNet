@@ -15,7 +15,7 @@ export class ActorCriticNetwork {
         // Hidden layers
         for (const hiddenSize of this.hiddenSizes) {
             this.layers.push({
-                w: this.heInitialize(prevSize, hiddenSize),
+                w: this.orthogonalInitialize(prevSize, hiddenSize),
                 b: new Float32Array(hiddenSize),
                 type: 'hidden'
             });
@@ -24,13 +24,13 @@ export class ActorCriticNetwork {
 
         // Actor head (policy)
         this.actorHead = {
-            w: this.heInitialize(prevSize, outputSize),
+            w: this.orthogonalInitialize(prevSize, outputSize),
             b: new Float32Array(outputSize)
         };
 
         // Critic head (value function)
         this.criticHead = {
-            w: this.heInitialize(prevSize, 1),
+            w: this.orthogonalInitialize(prevSize, 1),
             b: new Float32Array(1)
         };
 
@@ -242,8 +242,8 @@ export class ActorCriticNetwork {
         for (let j = 0; j < current.length; j++) {
             valueSum += current[j] * this.criticHead.w[j][0];
         }
-        // Clip value to reasonable range to prevent divergence
-        this.lastValue = Math.max(-500, Math.min(500, valueSum));
+        // Store raw value without clipping (PPO clipping happens in loss, not output)
+        this.lastValue = valueSum;
 
         return { policy: this.lastOutput, value: this.lastValue };
     }
@@ -449,19 +449,47 @@ export class ActorCriticNetwork {
                 }
 
 
-                // Critic Loss: Huber Loss
-                // Using currentValue from this forward pass for gradients
-                const diff = currentValue - returnValue;
-                const absDiff = Math.abs(diff);
-                const huberDelta = 1.0;
-                let gradFactor;
+                // Critic Loss: PPO Value Clipping with Huber Loss
+                // PPO clips the value prediction between old value and new value
+                const oldValue = value; // From initial forward pass
+                const valueClipEpsilon = 0.2; // PPO value clip range
+                const clippedValue = oldValue + Math.max(-valueClipEpsilon, Math.min(valueClipEpsilon, currentValue - oldValue));
 
-                if (absDiff <= huberDelta) {
-                    epochCriticLoss += 0.5 * diff * diff;
-                    gradFactor = diff;
+                // Calculate both unclipped and clipped losses (Huber)
+                const diff = currentValue - returnValue;
+                const diffClipped = clippedValue - returnValue;
+                const huberDelta = 1.0;
+
+                // Unclipped loss
+                let unclippedLoss;
+                if (Math.abs(diff) <= huberDelta) {
+                    unclippedLoss = 0.5 * diff * diff;
                 } else {
-                    epochCriticLoss += huberDelta * (absDiff - 0.5 * huberDelta);
-                    gradFactor = huberDelta * Math.sign(diff);
+                    unclippedLoss = huberDelta * (Math.abs(diff) - 0.5 * huberDelta);
+                }
+
+                // Clipped loss
+                let clippedLoss;
+                if (Math.abs(diffClipped) <= huberDelta) {
+                    clippedLoss = 0.5 * diffClipped * diffClipped;
+                } else {
+                    clippedLoss = huberDelta * (Math.abs(diffClipped) - 0.5 * huberDelta);
+                }
+
+                // Use max loss (PPO-style, protects old policy)
+                const valueLoss = Math.max(unclippedLoss, clippedLoss);
+                epochCriticLoss += valueLoss;
+
+                // Use gradient from whichever loss is larger
+                let gradFactor;
+                if (unclippedLoss >= clippedLoss) {
+                    // Gradient from unclipped
+                    const absDiff = Math.abs(diff);
+                    gradFactor = absDiff <= huberDelta ? diff : huberDelta * Math.sign(diff);
+                } else {
+                    // Gradient from clipped (which means gradient is zero if clipped is protecting)
+                    const absDiffClipped = Math.abs(diffClipped);
+                    gradFactor = absDiffClipped <= huberDelta ? diffClipped : huberDelta * Math.sign(diffClipped);
                 }
                 
                 // Critic gradients

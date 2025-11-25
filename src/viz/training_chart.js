@@ -124,6 +124,29 @@ export class TrainingChart {
             ctx.fillText(value.toFixed(0), padding - 5, y + 4);
         }
 
+        // Draw gradient fill under the curve
+        const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
+        gradient.addColorStop(0, colors.primary.replace('ff', '40')); // Transparent primary
+        gradient.addColorStop(1, colors.primary.replace('ff', '05')); // More transparent
+
+        // Fill area under curve
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+
+        for (let i = 1; i < points.length; i++) {
+            const cp = {
+                x: (points[i - 1].x + points[i].x) / 2,
+                y: (points[i - 1].y + points[i].y) / 2
+            };
+            ctx.quadraticCurveTo(cp.x, cp.y, points[i].x, points[i].y);
+        }
+
+        ctx.lineTo(points[points.length - 1].x, height - padding);
+        ctx.lineTo(points[0].x, height - padding);
+        ctx.closePath();
+        ctx.fill();
+
         // Draw smooth curve using quadratic Bezier interpolation
         ctx.strokeStyle = colors.primary;
         ctx.lineWidth = 2;
@@ -162,6 +185,29 @@ export class TrainingChart {
                 });
             }
 
+            // Draw gradient fill under moving average
+            const avgGradient = ctx.createLinearGradient(0, padding, 0, height - padding);
+            avgGradient.addColorStop(0, colors.secondary.replace('ff', '30')); // Transparent secondary
+            avgGradient.addColorStop(1, colors.secondary.replace('ff', '03')); // More transparent
+
+            ctx.fillStyle = avgGradient;
+            ctx.beginPath();
+            ctx.moveTo(avgPoints[0].x, avgPoints[0].y);
+
+            for (let i = 1; i < avgPoints.length; i++) {
+                const cp = {
+                    x: (avgPoints[i - 1].x + avgPoints[i].x) / 2,
+                    y: (avgPoints[i - 1].y + avgPoints[i].y) / 2
+                };
+                ctx.quadraticCurveTo(cp.x, cp.y, avgPoints[i].x, avgPoints[i].y);
+            }
+
+            ctx.lineTo(avgPoints[avgPoints.length - 1].x, height - padding);
+            ctx.lineTo(avgPoints[0].x, height - padding);
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw the dashed line
             ctx.strokeStyle = colors.secondary;
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);

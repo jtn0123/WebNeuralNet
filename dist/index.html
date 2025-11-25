@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/index-CKzO2Q6M.js"></script>
+  <script type="module" crossorigin src="/assets/index-By-4iuki.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-dbUzznXj.css">
 </head>
 <body>
@@ -422,6 +422,15 @@
                     <label>GAE Lambda (λ): <span id="gae-lambda-value">0.95</span></label>
                     <input type="range" id="gae-lambda" min="0.90" max="0.99" step="0.01" value="0.95">
                     <div style="font-size: 11px; color: #666; margin-top: 4px;">Higher = more variance, lower = more bias</div>
+                </div>
+                <div class="setting">
+                    <label>Learning Rate Schedule</label>
+                    <select id="lr-schedule">
+                        <option value="none">None (Fixed)</option>
+                        <option value="linear" selected>Linear Decay</option>
+                        <option value="exponential">Exponential Decay</option>
+                    </select>
+                    <div style="font-size: 11px; color: #666; margin-top: 4px;">Adjusts learning rate during training</div>
                 </div>
             </div>
 
