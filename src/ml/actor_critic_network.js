@@ -242,8 +242,10 @@ export class ActorCriticNetwork {
         for (let j = 0; j < current.length; j++) {
             valueSum += current[j] * this.criticHead.w[j][0];
         }
-        // Store raw value without clipping (PPO clipping happens in loss, not output)
-        this.lastValue = valueSum;
+        // Clamp to prevent numerical instability (NaN/Infinity propagation)
+        // Use wide bounds that won't interfere with normal learning
+        // PPO value clipping in loss function handles the trust region constraint
+        this.lastValue = Math.max(-1000, Math.min(1000, valueSum));
 
         return { policy: this.lastOutput, value: this.lastValue };
     }
@@ -487,18 +489,17 @@ export class ActorCriticNetwork {
                 epochCriticLoss += valueLoss;
 
                 // Gradient calculation for PPO value clipping
-                // Gradient flows through whichever path produces the max (worse) loss
-                // This follows proper auto-diff semantics: d(max(a,b))/dx flows through the larger term
+                // Apply chain rule: d(loss)/d(currentValue) = d(loss)/d(clippedValue) * d(clippedValue)/d(currentValue)
+                // When clippedLoss > unclippedLoss, value is outside clip range, so d(clippedValue)/d(currentValue) = 0
                 let gradFactor;
                 if (unclippedLoss >= clippedLoss) {
                     // Unclipped loss is higher/equal - gradient flows through currentValue path
                     const absDiff = Math.abs(diff);
                     gradFactor = absDiff <= huberDelta ? diff : huberDelta * Math.sign(diff);
                 } else {
-                    // Clipped loss is higher - gradient flows through clippedValue path
-                    // Use gradient at clipped position to push value toward return
-                    const absDiffClipped = Math.abs(diffClipped);
-                    gradFactor = absDiffClipped <= huberDelta ? diffClipped : huberDelta * Math.sign(diffClipped);
+                    // Clipped loss is higher - value is outside clip range (clipping is saturated)
+                    // d(clippedValue)/d(currentValue) = 0, so gradient = 0 by chain rule
+                    gradFactor = 0;
                 }
                 
                 // Critic gradients
