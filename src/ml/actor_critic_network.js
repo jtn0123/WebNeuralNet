@@ -486,22 +486,19 @@ export class ActorCriticNetwork {
                 const valueLoss = Math.max(unclippedLoss, clippedLoss);
                 epochCriticLoss += valueLoss;
 
-                // Gradient calculation with proper clipping behavior
-                // Check if the value actually exceeded the clip bounds
-                const valueDelta = currentValue - oldValue;
-                const isClipped = Math.abs(valueDelta) > valueClipEpsilon;
-                
+                // Gradient calculation for PPO value clipping
+                // Gradient flows through whichever path produces the max (worse) loss
+                // This follows proper auto-diff semantics: d(max(a,b))/dx flows through the larger term
                 let gradFactor;
-                if (unclippedLoss >= clippedLoss || !isClipped) {
-                    // Gradient flows normally when:
-                    // 1. Unclipped loss is higher or equal (value moving toward target within bounds), OR
-                    // 2. Value is within clip bounds (clippedValue == currentValue, so gradient flows through)
+                if (unclippedLoss >= clippedLoss) {
+                    // Unclipped loss is higher/equal - gradient flows through currentValue path
                     const absDiff = Math.abs(diff);
                     gradFactor = absDiff <= huberDelta ? diff : huberDelta * Math.sign(diff);
                 } else {
-                    // Value exceeded clip bounds toward target - stop gradient to prevent overshooting
-                    // (In auto-diff terms: d(clippedValue)/d(currentValue) = 0 when clipped outside bounds)
-                    gradFactor = 0;
+                    // Clipped loss is higher - gradient flows through clippedValue path
+                    // Use gradient at clipped position to push value toward return
+                    const absDiffClipped = Math.abs(diffClipped);
+                    gradFactor = absDiffClipped <= huberDelta ? diffClipped : huberDelta * Math.sign(diffClipped);
                 }
                 
                 // Critic gradients
