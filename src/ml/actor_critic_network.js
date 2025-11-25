@@ -487,15 +487,20 @@ export class ActorCriticNetwork {
                 epochCriticLoss += valueLoss;
 
                 // Gradient calculation with proper clipping behavior
+                // Check if the value actually exceeded the clip bounds
+                const valueDelta = currentValue - oldValue;
+                const isClipped = Math.abs(valueDelta) > valueClipEpsilon;
+                
                 let gradFactor;
-                if (unclippedLoss >= clippedLoss) {
-                    // Value hasn't overshot - gradient flows normally to push toward target
+                if (unclippedLoss >= clippedLoss || !isClipped) {
+                    // Gradient flows normally when:
+                    // 1. Unclipped loss is higher or equal (value moving toward target within bounds), OR
+                    // 2. Value is within clip bounds (clippedValue == currentValue, so gradient flows through)
                     const absDiff = Math.abs(diff);
                     gradFactor = absDiff <= huberDelta ? diff : huberDelta * Math.sign(diff);
                 } else {
-                    // Value overshot beyond clip range toward target.
-                    // PPO value clipping stops gradient to prevent further overshooting.
-                    // (In auto-diff terms: d(clippedValue)/d(currentValue) = 0 when clipped)
+                    // Value exceeded clip bounds toward target - stop gradient to prevent overshooting
+                    // (In auto-diff terms: d(clippedValue)/d(currentValue) = 0 when clipped outside bounds)
                     gradFactor = 0;
                 }
                 
