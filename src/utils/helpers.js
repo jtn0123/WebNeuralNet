@@ -35,6 +35,19 @@ export function debounce(func, wait) {
     };
 }
 
+// Convert hex color (#RRGGBB) to rgba format with alpha
+export function hexToRgba(hex, alpha) {
+    // Remove # if present
+    hex = hex.replace('#', '');
+    
+    // Parse RGB values
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // Get theme-aware colors for canvas rendering
 export function getThemeColors() {
     const isDark = document.documentElement.getAttribute('data-theme') !== 'light';

@@ -1,4 +1,4 @@
-import { debounce, getThemeColors } from '../utils/helpers.js';
+import { debounce, getThemeColors, hexToRgba } from '../utils/helpers.js';
 
 // Training chart visualizer
 export class TrainingChart {
@@ -126,8 +126,8 @@ export class TrainingChart {
 
         // Draw gradient fill under the curve
         const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
-        gradient.addColorStop(0, colors.primary.replace('ff', '40')); // Transparent primary
-        gradient.addColorStop(1, colors.primary.replace('ff', '05')); // More transparent
+        gradient.addColorStop(0, hexToRgba(colors.primary, 0.25)); // Transparent primary
+        gradient.addColorStop(1, hexToRgba(colors.primary, 0.02)); // More transparent
 
         // Fill area under curve
         ctx.fillStyle = gradient;
@@ -187,8 +187,8 @@ export class TrainingChart {
 
             // Draw gradient fill under moving average
             const avgGradient = ctx.createLinearGradient(0, padding, 0, height - padding);
-            avgGradient.addColorStop(0, colors.secondary.replace('ff', '30')); // Transparent secondary
-            avgGradient.addColorStop(1, colors.secondary.replace('ff', '03')); // More transparent
+            avgGradient.addColorStop(0, hexToRgba(colors.secondary, 0.19)); // Transparent secondary
+            avgGradient.addColorStop(1, hexToRgba(colors.secondary, 0.01)); // More transparent
 
             ctx.fillStyle = avgGradient;
             ctx.beginPath();

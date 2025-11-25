@@ -476,20 +476,21 @@ export class ActorCriticNetwork {
                     clippedLoss = huberDelta * (Math.abs(diffClipped) - 0.5 * huberDelta);
                 }
 
-                // Use max loss (PPO-style, protects old policy)
+                // Use max loss (PPO-style pessimistic bound)
                 const valueLoss = Math.max(unclippedLoss, clippedLoss);
                 epochCriticLoss += valueLoss;
 
-                // Use gradient from whichever loss is larger
+                // Gradient calculation with proper clipping behavior
                 let gradFactor;
                 if (unclippedLoss >= clippedLoss) {
-                    // Gradient from unclipped
+                    // Value hasn't overshot - gradient flows normally to push toward target
                     const absDiff = Math.abs(diff);
                     gradFactor = absDiff <= huberDelta ? diff : huberDelta * Math.sign(diff);
                 } else {
-                    // Gradient from clipped (which means gradient is zero if clipped is protecting)
-                    const absDiffClipped = Math.abs(diffClipped);
-                    gradFactor = absDiffClipped <= huberDelta ? diffClipped : huberDelta * Math.sign(diffClipped);
+                    // Value overshot beyond clip range toward target.
+                    // PPO value clipping stops gradient to prevent further overshooting.
+                    // (In auto-diff terms: d(clippedValue)/d(currentValue) = 0 when clipped)
+                    gradFactor = 0;
                 }
                 
                 // Critic gradients

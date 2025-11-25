@@ -1,4 +1,4 @@
-import { debounce, getThemeColors } from '../utils/helpers.js';
+import { debounce, getThemeColors, hexToRgba } from '../utils/helpers.js';
 
 // Loss tracking visualization
 export class TrainingLossChart {
@@ -71,8 +71,8 @@ export class TrainingLossChart {
 
         // Draw actor loss gradient fill
         const actorGradient = ctx.createLinearGradient(0, padding, 0, height - padding);
-        actorGradient.addColorStop(0, colors.primary.replace('ff', '30')); // Transparent primary
-        actorGradient.addColorStop(1, colors.primary.replace('ff', '05')); // More transparent
+        actorGradient.addColorStop(0, hexToRgba(colors.primary, 0.19)); // Transparent primary
+        actorGradient.addColorStop(1, hexToRgba(colors.primary, 0.02)); // More transparent
 
         ctx.fillStyle = actorGradient;
         ctx.beginPath();
@@ -105,8 +105,8 @@ export class TrainingLossChart {
 
         // Draw critic loss gradient fill
         const criticGradient = ctx.createLinearGradient(0, padding, 0, height - padding);
-        criticGradient.addColorStop(0, colors.secondary.replace('ff', '30')); // Transparent secondary
-        criticGradient.addColorStop(1, colors.secondary.replace('ff', '05')); // More transparent
+        criticGradient.addColorStop(0, hexToRgba(colors.secondary, 0.19)); // Transparent secondary
+        criticGradient.addColorStop(1, hexToRgba(colors.secondary, 0.02)); // More transparent
 
         ctx.fillStyle = criticGradient;
         ctx.beginPath();
