@@ -1,4 +1,5 @@
 import { CONSTANTS } from '../utils/constants.js';
+import { debounce } from '../utils/helpers.js';
 
 // State space heatmap visualization with advanced features
 export class StateSpaceHeatmap {
@@ -25,7 +26,7 @@ export class StateSpaceHeatmap {
         ];
 
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        window.addEventListener('resize', debounce(() => this.resize(), 150));
     }
 
     setDimensions(xDim, yDim) {

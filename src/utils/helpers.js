@@ -26,6 +26,15 @@ export function log(message) {
     }
 }
 
+// Debounce function to prevent excessive handler calls
+export function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+}
+
 // Copy all logs to clipboard
 export async function copyLogs() {
     const logDiv = document.getElementById('log');

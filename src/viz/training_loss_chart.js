@@ -1,3 +1,5 @@
+import { debounce } from '../utils/helpers.js';
+
 // Loss tracking visualization
 export class TrainingLossChart {
     constructor(canvasId) {
@@ -6,7 +8,7 @@ export class TrainingLossChart {
         this.actorLosses = [];
         this.criticLosses = [];
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        window.addEventListener('resize', debounce(() => this.resize(), 150));
     }
 
     resize() {

@@ -12,7 +12,12 @@ import { TrainingLossChart } from './viz/training_loss_chart.js';
 import { StateSpaceHeatmap } from './viz/state_space_heatmap.js';
 import { MetricsDashboard } from './ui/metrics_dashboard.js';
 import { ReplayBuffer } from './ui/replay_buffer.js';
+import { ThemeManager } from './ui/theme_manager.js';
 import { RLSandbox } from './app/rl_sandbox.js';
+
+// Initialize theme management
+const themeManager = new ThemeManager();
+window.themeManager = themeManager; // Make available globally for debugging
 
 // Initialize the application
 const sandbox = new RLSandbox();

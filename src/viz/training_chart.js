@@ -1,3 +1,5 @@
+import { debounce } from '../utils/helpers.js';
+
 // Training chart visualizer
 export class TrainingChart {
     constructor(canvasId) {
@@ -6,7 +8,7 @@ export class TrainingChart {
         this.data = [];
         this.maxDataPoints = 100;
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        window.addEventListener('resize', debounce(() => this.resize(), 150));
     }
 
     resize() {

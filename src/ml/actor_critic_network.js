@@ -59,6 +59,36 @@ export class ActorCriticNetwork {
         this.lastHidden = [];
         this.lastOutput = null;
         this.lastValue = 0;
+
+        // Pre-allocate reusable buffers for performance
+        this.bufferPool = {
+            softmax: {
+                exps: new Float32Array(this.outputSize),
+                result: new Float32Array(this.outputSize)
+            },
+            forward: {
+                input: new Float32Array(this.inputSize),
+                hidden: this.hiddenSizes.map(size => new Float32Array(size)),
+                preActivations: this.hiddenSizes.map(size => new Float32Array(size)),
+                actorOutput: new Float32Array(this.outputSize),
+                criticOutput: new Float32Array(1)
+            },
+            gradients: {
+                layers: this.layers.map(layer => ({
+                    w: layer.w.map(row => new Float32Array(row.length)),
+                    b: new Float32Array(layer.b.length)
+                })),
+                actor: {
+                    w: this.actorHead.w.map(row => new Float32Array(row.length)),
+                    b: new Float32Array(this.actorHead.b.length)
+                },
+                critic: {
+                    w: this.criticHead.w.map(row => new Float32Array(row.length)),
+                    b: new Float32Array(this.criticHead.b.length)
+                }
+            },
+            actorOutputGrad: new Float32Array(this.outputSize)
+        };
     }
 
     heInitialize(inputSize, outputSize) {
@@ -103,17 +133,18 @@ export class ActorCriticNetwork {
 
     softmax(arr) {
         const max = Math.max(...arr);
-        const exps = new Float32Array(arr.length);
+        const exps = this.bufferPool.softmax.exps;
         let sum = 0;
         for (let i = 0; i < arr.length; i++) {
             exps[i] = Math.exp(arr[i] - max);
             sum += exps[i];
         }
-        const result = new Float32Array(arr.length);
+        const result = this.bufferPool.softmax.result;
         for (let i = 0; i < arr.length; i++) {
             result[i] = exps[i] / sum;
         }
-        return result;
+        // Return a copy to prevent external mutation of pooled buffer
+        return new Float32Array(result);
     }
 
     forward(input) {
@@ -126,8 +157,8 @@ export class ActorCriticNetwork {
         // Forward through hidden layers
         for (let layerIdx = 0; layerIdx < this.layers.length; layerIdx++) {
             const layer = this.layers[layerIdx];
-            const nextLayer = new Float32Array(layer.b.length);
-            const preActivations = new Float32Array(layer.b.length);
+            const preActivations = this.bufferPool.forward.preActivations[layerIdx];
+            const nextLayer = this.bufferPool.forward.hidden[layerIdx];
 
             for (let i = 0; i < layer.b.length; i++) {
                 let sum = layer.b[i];
@@ -138,13 +169,14 @@ export class ActorCriticNetwork {
                 nextLayer[i] = this.activate(sum);
             }
 
+            // Store copies for visualization
             this.lastPreActivation.push(new Float32Array(preActivations));
             this.lastHidden.push(new Float32Array(nextLayer));
             current = nextLayer;
         }
 
         // Actor output (policy)
-        const actorOutput = new Float32Array(this.outputSize);
+        const actorOutput = this.bufferPool.forward.actorOutput;
         for (let i = 0; i < this.outputSize; i++) {
             let sum = this.actorHead.b[i];
             for (let j = 0; j < current.length; j++) {
@@ -267,22 +299,27 @@ export class ActorCriticNetwork {
 
         // PPO Loop: Multiple epochs over the same batch
         for (let epoch = 0; epoch < epochs; epoch++) {
-            
-            // Initialize gradient accumulators for this epoch
-            const layerGrads = this.layers.map(layer => ({
-                w: layer.w.map(row => new Float32Array(row.length)),
-                b: new Float32Array(layer.b.length)
-            }));
 
-            const actorGrad = {
-                w: this.actorHead.w.map(row => new Float32Array(row.length)),
-                b: new Float32Array(this.actorHead.b.length)
-            };
+            // Zero out pooled gradient buffers for this epoch (instead of allocating)
+            const layerGrads = this.bufferPool.gradients.layers;
+            const actorGrad = this.bufferPool.gradients.actor;
+            const criticGrad = this.bufferPool.gradients.critic;
 
-            const criticGrad = {
-                w: this.criticHead.w.map(row => new Float32Array(row.length)),
-                b: new Float32Array(this.criticHead.b.length)
-            };
+            // Zero all gradients
+            for (let layerIdx = 0; layerIdx < layerGrads.length; layerIdx++) {
+                for (let i = 0; i < layerGrads[layerIdx].w.length; i++) {
+                    layerGrads[layerIdx].w[i].fill(0);
+                }
+                layerGrads[layerIdx].b.fill(0);
+            }
+            for (let i = 0; i < actorGrad.w.length; i++) {
+                actorGrad.w[i].fill(0);
+            }
+            actorGrad.b.fill(0);
+            for (let i = 0; i < criticGrad.w.length; i++) {
+                criticGrad.w[i].fill(0);
+            }
+            criticGrad.b.fill(0);
 
             let epochActorLoss = 0;
             let epochCriticLoss = 0;
@@ -293,7 +330,7 @@ export class ActorCriticNetwork {
                 const advantage = normalizedAdv[i];
                 const returnValue = allReturns[i];
                 const value = allValues[i]; // Using fixed targets for stability within epochs
-                
+
                 // Re-forward to get CURRENT policy probabilities
                 const { policy, value: currentValue } = this.forward(state);
                 const newProb = policy[action];
@@ -304,14 +341,14 @@ export class ActorCriticNetwork {
 
                 // PPO Actor Loss
                 // L^CLIP = min(r*A, clip(r, 1-e, 1+e)*A)
-                
+
                 const unclippedObj = ratio * advantage;
                 const clippedRatio = Math.max(1 - ppoEpsilon, Math.min(1 + ppoEpsilon, ratio));
                 const clippedObj = clippedRatio * advantage;
-                
+
                 // We minimize Negative Loss, so maximizing Objective
                 // Loss = -min(unclipped, clipped)
-                
+
                 // Calculate Entropy
                 let entropy = 0;
                 for (const p of policy) {
@@ -341,7 +378,8 @@ export class ActorCriticNetwork {
                      ppoGradFactor = 0;
                 }
 
-                const actorOutputGrad = new Float32Array(policy);
+                const actorOutputGrad = this.bufferPool.actorOutputGrad;
+                actorOutputGrad.set(policy);
 
                 // Standard PG Logic adjusted for PPO:
                 // Standard: (p - 1) * A

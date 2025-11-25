@@ -427,14 +427,19 @@ export class RLSandbox {
             Object.assign(state, result.state);
             done = result.done;
 
-            this.updateMetrics();
-            this.updateActionBars();
-            this.updateStateDisplay();
+            // Throttle ALL UI updates for better performance
+            if (this.frameCounter % CONSTANTS.UI_UPDATE_FREQUENCY === 0) {
+                this.updateMetrics();
+                this.updateActionBars();
+                this.updateStateDisplay();
+            }
 
-            // Throttle SVG updates for better performance
-            if (this.frameCounter++ % CONSTANTS.SVG_UPDATE_FREQUENCY === 0) {
+            // Throttle SVG updates separately for even less frequent DOM operations
+            if (this.frameCounter % CONSTANTS.SVG_UPDATE_FREQUENCY === 0) {
                 this.visualizer.visualize(this.network);
             }
+
+            this.frameCounter++;
 
             await new Promise(resolve => setTimeout(resolve, stepDelay));
         }
@@ -489,6 +494,11 @@ export class RLSandbox {
         }
 
         this.chart.addDataPoint(this.episode, this.env.steps);
+
+        // Trigger victory animation on successful episode
+        if (this.env.steps >= 500) {
+            this.triggerVictoryAnimation();
+        }
 
         if (this.episode % CONSTANTS.LOG_INTERVAL_EPISODES === 0) {
             const avgLast10 = this.survivalHistory.slice(-CONSTANTS.SURVIVAL_HISTORY_WINDOW).reduce((a, b) => a + b, 0) / Math.min(CONSTANTS.SURVIVAL_HISTORY_WINDOW, this.survivalHistory.length);
@@ -949,9 +959,25 @@ export class RLSandbox {
         }, { passive: false });
     }
 
+    triggerVictoryAnimation() {
+        // Add victory animation class to canvas
+        const canvas = this.renderer.canvas;
+        canvas.classList.add('victory-animation');
+
+        // Remove class after animation completes
+        setTimeout(() => {
+            canvas.classList.remove('victory-animation');
+        }, 1000);
+
+        // Optional: Play success sound or toast notification
+        new Toast('🎉 Episode Success! Survived 500 steps!', 'success');
+    }
+
     animate() {
-        this.renderer.render(this.env);
-        this.updateStateDisplay();
+        // Only render when actively training, testing, or in manual control mode
+        if (this.isTraining || this.isTesting || this.isManual) {
+            this.renderer.render(this.env);
+        }
         requestAnimationFrame(() => this.animate());
     }
 }

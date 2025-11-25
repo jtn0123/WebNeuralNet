@@ -38,7 +38,8 @@ export const CONSTANTS = {
     NODE_SPACING_MIN: 25,
 
     // Rendering and visualization
-    SVG_UPDATE_FREQUENCY: 3, // Update every N frames
+    UI_UPDATE_FREQUENCY: 3,      // Update metrics every N frames
+    SVG_UPDATE_FREQUENCY: 5,     // Update network viz every N frames
 
     // History management
     SURVIVAL_HISTORY_MAX: 100,

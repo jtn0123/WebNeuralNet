@@ -1,4 +1,5 @@
 import { CONSTANTS } from '../utils/constants.js';
+import { debounce } from '../utils/helpers.js';
 
 // Rendering
 export class Renderer {
@@ -9,7 +10,7 @@ export class Renderer {
         this.offscreenCanvas = document.createElement('canvas');
         this.offscreenCtx = this.offscreenCanvas.getContext('2d');
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        window.addEventListener('resize', debounce(() => this.resize(), 150));
     }
 
     resize() {

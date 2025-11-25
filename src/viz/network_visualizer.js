@@ -1,9 +1,11 @@
+import { debounce } from '../utils/helpers.js';
+
 // Network visualizer with enhanced interactivity and visual improvements
 export class NetworkVisualizer {
     constructor(svgId) {
         this.svg = document.getElementById(svgId);
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        window.addEventListener('resize', debounce(() => this.resize(), 150));
 
         // Create persistent SVG structure
         this.initializeSVG();
