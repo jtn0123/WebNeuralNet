@@ -490,16 +490,27 @@ export class ActorCriticNetwork {
 
                 // Gradient calculation for PPO value clipping
                 // Apply chain rule: d(loss)/d(currentValue) = d(loss)/d(clippedValue) * d(clippedValue)/d(currentValue)
-                // When clippedLoss > unclippedLoss, value is outside clip range, so d(clippedValue)/d(currentValue) = 0
+                // When clippedLoss > unclippedLoss, we must check if we're inside or outside clip range
                 let gradFactor;
                 if (unclippedLoss >= clippedLoss) {
                     // Unclipped loss is higher/equal - gradient flows through currentValue path
                     const absDiff = Math.abs(diff);
                     gradFactor = absDiff <= huberDelta ? diff : huberDelta * Math.sign(diff);
                 } else {
-                    // Clipped loss is higher - value is outside clip range (clipping is saturated)
-                    // d(clippedValue)/d(currentValue) = 0, so gradient = 0 by chain rule
-                    gradFactor = 0;
+                    // Clipped loss is higher - gradient flows through clippedValue path
+                    // Need to check if we're inside or outside the clip range
+                    const valueDelta = currentValue - oldValue;
+
+                    if (Math.abs(valueDelta) <= valueClipEpsilon) {
+                        // Inside clip range: d(clippedValue)/d(currentValue) = 1
+                        // Compute Huber gradient with respect to diffClipped
+                        const absDiffClipped = Math.abs(diffClipped);
+                        gradFactor = absDiffClipped <= huberDelta ? diffClipped : huberDelta * Math.sign(diffClipped);
+                    } else {
+                        // Outside clip range: d(clippedValue)/d(currentValue) = 0
+                        // This is the only case where gradient should be zero
+                        gradFactor = 0;
+                    }
                 }
                 
                 // Critic gradients
