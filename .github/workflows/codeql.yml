@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: '0 6 * * 1'
 
+# Default-deny baseline for any job that does not set its own permissions.
+permissions:
+  contents: read
+
 jobs:
   analyze:
     name: Analyze

@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Environment / secrets
+.env
+.env.local
+.env.*
+!.env.example
+
+# Test output
+coverage/
+
+# OS
+.DS_Store
