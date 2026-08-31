@@ -22,5 +22,6 @@ jobs:
           fetch-depth: 0
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2 # v7.2.1
+        continue-on-error: true  # a dead SONAR_TOKEN must not gate a PR
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
